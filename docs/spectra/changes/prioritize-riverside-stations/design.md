@@ -36,7 +36,7 @@ For each station, compute the shortest distance to every member-way segment usin
 
 ### Fetch riverside routes with a second Overpass query
 
-The route query runs as a second request through the existing Overpass fallback, reusing the same instances, retry, and `User-Agent`. It is not merged into the shop query, so a timeout on one does not waste the other, and the queries can be tested independently. The query body is `rel["route"="bicycle"](area.a)->.r; way(r.r); out geom; .r out tags;` with the same area definition as the shop query. The Overpass fetch function takes the query as a parameter.
+The route query runs as a second request through the existing Overpass fallback, reusing the same instances, retry, and `User-Agent`. It is not merged into the shop query, so a timeout on one does not waste the other, and the queries can be tested independently. The query body is `rel["route"="bicycle"](area.a)->.r; way(r.r); out geom; .r out body;` with the same area definition as the shop query; `out body` is required because `out tags` omits relation members, which the classifier needs to find each route's ways. The Overpass fetch function takes the query as a parameter. The shop query and the route query run one after the other, not in parallel, so a public instance never receives two heavy requests from the pipeline at once.
 
 ### Guard riverside counts in the publish check
 
@@ -52,7 +52,7 @@ Riverside stations go in the existing marker cluster group. Urban stations go in
 
 ### Initial view fits riverside stations
 
-On mount, the map calls `fitBounds` on the riverside stations' bounds instead of the fixed `setView([25.0375, 121.5637], 13)`. If there are no riverside stations (only possible with hand-edited data, because the publish guard blocks it), it falls back to the fixed view.
+On mount, the map calls `fitBounds` on the riverside stations' bounds instead of the fixed `setView([25.0375, 121.5637], 13)`. If there are no riverside stations (only possible with hand-edited data, because the publish guard blocks it), it falls back to the fixed view. Which stations go in which layer and what to frame is decided by a pure helper `splitStations` in app/utils/geo.ts so it can be unit-tested. When no station carries a boolean `riverside` field at all (a browser holding a cached pre-change `stations.json` right after deploy), the helper treats every station as riverside so the map shows all stations instead of an empty map.
 
 ## Implementation Contract
 

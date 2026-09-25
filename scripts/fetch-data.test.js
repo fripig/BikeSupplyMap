@@ -122,6 +122,19 @@ describe('fetch-data', () => {
     expect(await readData()).toEqual(SEED)
   })
 
+  it('rejects too few riverside stations and keeps previous data', async () => {
+    // Routes far from every fake station: 21 routes, but no riverside station.
+    responses['/routes'] = () => {
+      const body = routesBody(21)
+      body.elements[0].geometry = [{ lat: 24.5, lon: 121.0 }, { lat: 24.5, lon: 121.01 }]
+      return [200, body]
+    }
+    const { code, stderr } = await run()
+    expect(code).not.toBe(0)
+    expect(stderr).toContain('riverside stations: got 0, expected at least 150')
+    expect(await readData()).toEqual(SEED)
+  })
+
   it('keeps previous data when the riverside route query fails', async () => {
     responses['/routes'] = () => [504, '<html>error</html>']
     const { code, stderr } = await run()

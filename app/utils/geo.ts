@@ -28,6 +28,21 @@ export interface NearbyShop {
 const EARTH_RADIUS_METERS = 6371008.8
 const toRad = (deg: number) => (deg * Math.PI) / 180
 
+export interface StationSplit {
+  riverside: Station[]
+  urban: Station[]
+}
+
+// Riverside stations are shown by default, urban ones behind the toggle. Data
+// without any riverside flag (a cached pre-flag stations.json) keeps every
+// station visible rather than showing an empty map.
+export function splitStations(stations: Station[]): StationSplit {
+  if (!stations.some((s) => typeof s.riverside === 'boolean')) return { riverside: stations, urban: [] }
+  const split: StationSplit = { riverside: [], urban: [] }
+  for (const s of stations) (s.riverside ? split.riverside : split.urban).push(s)
+  return split
+}
+
 export function haversineMeters(a: LatLng, b: LatLng): number {
   const dLat = toRad(b.lat - a.lat)
   const dLng = toRad(b.lng - a.lng)

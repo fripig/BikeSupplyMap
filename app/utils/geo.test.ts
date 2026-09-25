@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { haversineMeters, nearbyShops, type Category, type Shop } from './geo'
+import { haversineMeters, nearbyShops, splitStations, type Category, type Shop, type Station } from './geo'
 
 const station = { lat: 25.0330, lng: 121.5654 }
 const METERS_PER_DEGREE_LAT = 111194.93
@@ -32,5 +32,26 @@ describe('nearbyShops', () => {
     const mixed = [shopNorthOf('A', 100, 'convenience'), shopNorthOf('S', 200, 'supermarket')]
     const result = nearbyShops(station, mixed, 500, new Set<Category>(['supermarket']))
     expect(result.map((r) => r.shop.id)).toEqual(['S'])
+  })
+})
+
+describe('splitStations', () => {
+  const at = (id: string, riverside?: boolean): Station => ({
+    id, name: id, city: '臺北市', district: '大同區', lat: 25.05, lng: 121.51, ...(riverside === undefined ? {} : { riverside }),
+  }) as Station
+
+  it('shows riverside stations by default and keeps urban ones for the toggle', () => {
+    const { riverside, urban } = splitStations([at('A', true), at('B', true), at('C', false)])
+    expect(riverside.map((s) => s.id)).toEqual(['A', 'B'])
+    expect(urban.map((s) => s.id)).toEqual(['C'])
+  })
+
+  it('returns no riverside stations when none are flagged, so the map falls back to the fixed view', () => {
+    expect(splitStations([at('C', false)])).toEqual({ riverside: [], urban: [at('C', false)] })
+  })
+
+  it('keeps every station visible when the data has no riverside flag at all', () => {
+    const stale = [at('A'), at('B')]
+    expect(splitStations(stale)).toEqual({ riverside: stale, urban: [] })
   })
 })

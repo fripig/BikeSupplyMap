@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Circle, LayerGroup, Map as LeafletMap, Marker, MarkerCluster, MarkerClusterGroup } from 'leaflet'
-import type { NearbyShop, Station } from '~/utils/geo'
+import { splitStations, type NearbyShop, type Station } from '~/utils/geo'
 import { CATEGORY_COLORS, CATEGORY_LABELS } from '~/utils/categories'
 import { formatDistance } from '~/utils/format'
 import { directionsUrl } from '~/utils/links'
@@ -57,13 +57,16 @@ onMounted(async () => {
       iconSize: [30, 30],
     }),
   })
-  const riverside: Station[] = []
-  for (const station of props.stations) {
-    if (station.riverside) riverside.push(station)
-    L.marker([station.lat, station.lng], { icon: station.riverside ? riversideIcon : urbanIcon, title: station.name })
-      .on('click', () => emit('select', station))
-      .addTo(station.riverside ? riversideLayer : urbanLayer)
+  const { riverside, urban } = splitStations(props.stations)
+  const addMarkers = (stations: Station[], icon: typeof riversideIcon, layer: MarkerClusterGroup) => {
+    for (const station of stations) {
+      L.marker([station.lat, station.lng], { icon, title: station.name })
+        .on('click', () => emit('select', station))
+        .addTo(layer)
+    }
   }
+  addMarkers(riverside, riversideIcon, riversideLayer)
+  addMarkers(urban, urbanIcon, urbanLayer)
   if (riverside.length) map.fitBounds(L.latLngBounds(riverside.map((s) => [s.lat, s.lng])), { padding: [16, 16] })
   else map.setView(FALLBACK_VIEW.center, FALLBACK_VIEW.zoom)
   if (props.showUrban) map.addLayer(urbanLayer)

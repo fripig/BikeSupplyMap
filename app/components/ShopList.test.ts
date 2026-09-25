@@ -30,10 +30,11 @@ describe('ShopList', () => {
     })
     const items = wrapper.findAll('li')
     expect(items).toHaveLength(2)
-    expect(items[0].text()).toContain('全聯福利中心')
-    expect(items[0].text()).toContain('超市 · 直線距離 120 m')
-    expect(items[1].find('.shop__name').text()).toBe('雜貨店')
-    const link = items[0].find('a')
+    const [first, second] = [items[0]!, items[1]!]
+    expect(first.text()).toContain('全聯福利中心')
+    expect(first.text()).toContain('超市 · 直線距離 120 m')
+    expect(second.find('.shop__name').text()).toBe('雜貨店')
+    const link = first.find('a')
     expect(link.attributes('href')).toBe(
       'https://www.google.com/maps/dir/?api=1&origin=25.02605,121.5436&destination=25.0271,121.5442&travelmode=walking',
     )
