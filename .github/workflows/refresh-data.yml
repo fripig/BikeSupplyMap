@@ -1,0 +1,53 @@
+name: Refresh data
+
+on:
+  schedule:
+    # Mondays 03:00 Asia/Taipei
+    - cron: '0 19 * * 0'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: refresh-data
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      changed: ${{ steps.commit.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      # The fetch script only uses Node built-ins, so no npm install is needed.
+      - run: node scripts/fetch-data.js
+      - id: commit
+        run: |
+          # meta.json always carries a new timestamp; only commit when the datasets differ.
+          if git diff --quiet -- public/data/stations.json public/data/shops.json; then
+            echo "No data changes; nothing to commit."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add public/data
+          git commit -m "Refresh YouBike station and shop data"
+          git push
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+  # Pushes made with GITHUB_TOKEN do not trigger other workflows, so deploy explicitly.
+  deploy:
+    needs: refresh
+    if: needs.refresh.outputs.changed == 'true'
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/deploy.yml
