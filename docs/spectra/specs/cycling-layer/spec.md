@@ -43,7 +43,7 @@ While the `都市自行車道` toggle is on, the site SHALL draw every path in `
 ---
 ### Requirement: Traffic signals and crossings along urban paths
 
-While the `都市自行車道` toggle is on and the map zoom is 16 or greater, the site SHALL mark every point in `cycling.json` with an icon by kind: one icon for `signal` (紅綠燈) and a different icon for `crossing` (穿越道). Below zoom 16 the site SHALL NOT show these markers. The site SHALL show a legend naming 河濱自行車道 and 橋梁自行車道 while route data is loaded, and additionally 自行車道, 自行車道（畫線）, 紅綠燈, and 穿越道 while the urban layer is on, each with its line or icon style.
+While the `都市自行車道` toggle is on and the map zoom is 16 or greater, the site SHALL mark every point in `cycling.json` with an icon by kind: one icon for `signal` (紅綠燈) and a different icon for `crossing` (穿越道). Below zoom 16 the site SHALL NOT show these markers. The site SHALL show a legend naming 河濱自行車道 and 橋梁自行車道 while route data is loaded, 自動販賣機 while route data is loaded and the 自動販賣機 category toggle is on, and additionally 自行車道, 自行車道（畫線）, 紅綠燈, and 穿越道 while the urban layer is on, each with its line or icon style.
 
 #### Scenario: Markers depend on zoom
 
@@ -61,25 +61,58 @@ While the `都市自行車道` toggle is on and the map zoom is 16 or greater, t
 
 #### Scenario: Legend follows the layers
 
-- **WHEN** route data has loaded and the user turns the urban layer off and on
-- **THEN** the legend always lists 河濱自行車道 and 橋梁自行車道, and lists the four urban entries only while the urban layer is on
+- **WHEN** route data has loaded and the user turns the urban layer and the 自動販賣機 category toggle off and on
+- **THEN** the legend always lists 河濱自行車道 and 橋梁自行車道, lists 自動販賣機 only while the 自動販賣機 toggle is on, and lists the four urban entries only while the urban layer is on
+
+##### Example: legend entries
+
+| Route data | 自動販賣機 toggle | Urban layer | Legend |
+| ---------- | ----------------- | ----------- | ------ |
+| loaded | on | on | 河濱自行車道, 橋梁自行車道, 自動販賣機, 自行車道, 自行車道（畫線）, 紅綠燈, 穿越道 |
+| loaded | on | off | 河濱自行車道, 橋梁自行車道, 自動販賣機 |
+| loaded | off | off | 河濱自行車道, 橋梁自行車道 |
+| not loaded | on | on | 自行車道, 自行車道（畫線）, 紅綠燈, 穿越道 |
+| not loaded | on | off | (no legend) |
 
 ---
 ### Requirement: Riverside and bridge routes are drawn
 
-On page load the site SHALL request `data/routes.json` and draw every route in it at every zoom level, independent of the `都市自行車道` switch: riverside routes as thick lines in one color, and bridge routes as thick lines in a second, distinct color. Each line of a route SHALL be drawn as one continuous polyline. Selecting a bridge route line SHALL show that route's `name`. Route lines SHALL NOT intercept clicks on station markers. If `data/routes.json` cannot be loaded, the site SHALL show `自行車道資料載入失敗` in the controls and leave stations, shops, and the urban layer working.
+On page load the site SHALL request `data/routes.json` and draw every route in it at every zoom level, independent of the `都市自行車道` switch: riverside routes as thick lines in one color, and bridge routes (including supplementary bridges) as thick lines in a second, distinct color. Each line of a route SHALL be drawn as one continuous polyline. Selecting a bridge route line SHALL show that route's `name`. The site SHALL also mark every entry of the `routes.json` `vending` array with a vending icon at every zoom level while routes are drawn and the 自動販賣機 category toggle is on. Turning the 自動販賣機 toggle off SHALL remove every vending icon, and turning it on again SHALL show them again, without reloading `routes.json` and without changing the route lines. Selecting a vending icon SHALL show its `name`, or 自動販賣機 when the name is `null`, followed by the type from its `vending` value (飲料 for `drinks` or `beverages`, 飲水 for `water`, 咖啡 for `coffee`, 食物 for any other listed food value), and no type when `vending` is `null`. Route lines and vending icons SHALL NOT intercept clicks on station markers. If `data/routes.json` cannot be loaded, the site SHALL show `自行車道資料載入失敗` in the controls and leave stations, shops, and the urban layer working.
 
 #### Scenario: Routes appear on load
 
 - **WHEN** the user opens the site
-- **THEN** riverside routes and bridge routes are drawn in their two colors without any switch being turned on
+- **THEN** riverside routes and bridge routes are drawn in their two colors, and route-side vending machines are marked, without any switch being turned on (the 自動販賣機 toggle is on by default)
+
+#### Scenario: Vending icons follow the category toggle
+
+- **WHEN** route data has loaded and the user turns the 自動販賣機 category toggle off, then on
+- **THEN** every route-side vending icon disappears while the toggle is off and reappears when it is turned on, and the riverside and bridge route lines stay drawn throughout
 
 #### Scenario: Bridge name on selection
 
 - **WHEN** the user selects the line of the route named `華江橋自行車道`
 - **THEN** the name `華江橋自行車道` is shown next to the line
 
+#### Scenario: Supplementary bridge on the map
+
+- **WHEN** the user selects the 重陽橋 main span line
+- **THEN** the name `重陽橋（人行道）` is shown
+
+#### Scenario: Vending details on selection
+
+- **WHEN** the user selects route-side vending machines with the data below
+- **THEN** the text shown is as listed
+
+##### Example: vending popup text
+
+| name | vending | Shown |
+| ---- | ------- | ----- |
+| `null` | `drinks` | 自動販賣機 · 飲料 |
+| `黑松販賣機` | `coffee;food` | 黑松販賣機 · 咖啡、食物 |
+| `null` | `null` | 自動販賣機 |
+
 #### Scenario: Route data failure is contained
 
 - **WHEN** `data/routes.json` returns HTTP 404
-- **THEN** the message `自行車道資料載入失敗` appears in the controls, no route line is drawn, and stations remain selectable
+- **THEN** the message `自行車道資料載入失敗` appears in the controls, no route line or vending icon is drawn, and stations remain selectable
