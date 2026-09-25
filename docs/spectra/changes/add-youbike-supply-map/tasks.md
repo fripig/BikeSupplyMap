@@ -1,6 +1,6 @@
 ## 1. Project setup
 
-- [ ] 1.1 Scaffold the project per "Nuxt static generation with client-only Leaflet": Nuxt 4 app with `app/` directory, package.json scripts `dev` (nuxt dev), `generate` (nuxt generate), `preview`, `test` (vitest run), `fetch-data`; dependencies nuxt, leaflet, leaflet.markercluster, vitest; `nuxt.config.ts` with `app.baseURL: '/BikeSupplyMap/'` and Nitro preset `github_pages`; `node_modules/`, `.nuxt/`, `.output/` added to .gitignore. Verify: `npm install` succeeds, `npm run generate` emits `.output/public/index.html` whose asset URLs start with `/BikeSupplyMap/_nuxt/`, and `npx vitest run --passWithNoTests` exits 0.
+- [x] 1.1 Scaffold the project per "Nuxt static generation with client-only Leaflet": Nuxt 4 app with `app/` directory, package.json scripts `dev` (nuxt dev), `generate` (nuxt generate), `preview`, `test` (vitest run), `fetch-data`; dependencies nuxt, leaflet, leaflet.markercluster, vitest; `nuxt.config.ts` with `app.baseURL: '/BikeSupplyMap/'` and Nitro preset `github_pages`; `node_modules/`, `.nuxt/`, `.output/` added to .gitignore. Verify: `npm install` succeeds, `npm run generate` emits `.output/public/index.html` whose asset URLs start with `/BikeSupplyMap/_nuxt/`, and `npx vitest run --passWithNoTests` exits 0.
 
 ## 2. Data pipeline (supply-data)
 

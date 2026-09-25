@@ -6,3 +6,10 @@
 
 # JetBrains IDE
 .idea/
+
+# Node / Nuxt
+node_modules/
+.nuxt/
+.output/
+.data/
+dist
