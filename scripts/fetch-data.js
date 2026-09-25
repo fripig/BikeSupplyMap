@@ -49,14 +49,22 @@ async function fetchJson(label, url, init = {}) {
   }
 }
 
+function expectArray(label, value) {
+  if (!Array.isArray(value)) throw new Error(`${label}: expected an array`)
+  return value
+}
+
 async function fetchTaipeiStations() {
-  const records = await fetchJson('Taipei YouBike', TAIPEI_URL)
+  const records = expectArray('Taipei YouBike', await fetchJson('Taipei YouBike', TAIPEI_URL))
   return records.map(normalizeTaipei).filter(Boolean)
 }
 
 async function fetchNewTaipeiStations() {
   const records = await fetchAllPages(
-    (page) => fetchJson(`New Taipei YouBike page ${page}`, `${NEW_TAIPEI_URL}?page=${page}&size=${NEW_TAIPEI_PAGE_SIZE}`),
+    async (page) => {
+      const label = `New Taipei YouBike page ${page}`
+      return expectArray(label, await fetchJson(label, `${NEW_TAIPEI_URL}?page=${page}&size=${NEW_TAIPEI_PAGE_SIZE}`))
+    },
     NEW_TAIPEI_PAGE_SIZE,
   )
   return records.map(normalizeNewTaipei).filter(Boolean)
@@ -81,6 +89,7 @@ async function fetchOverpass() {
           body: new URLSearchParams({ data: OVERPASS_QUERY }),
         })
         if (body.remark) throw new Error(`${label}: ${body.remark}`)
+        expectArray(`${label} elements`, body.elements)
         return body
       } catch (err) {
         if (!isRetryable(err)) throw err

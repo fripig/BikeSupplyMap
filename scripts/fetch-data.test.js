@@ -102,6 +102,22 @@ describe('fetch-data', () => {
     expect(await readData()).toEqual(SEED)
   })
 
+  it('names the source when a response has an unexpected shape and keeps previous data', async () => {
+    responses['/taipei'] = () => [200, { retVal: taipeiStations(600) }]
+    const { code, stderr } = await run()
+    expect(code).not.toBe(0)
+    expect(stderr).toContain('Taipei YouBike: expected an array')
+    expect(await readData()).toEqual(SEED)
+  })
+
+  it('rejects stations with broken coordinates through the minimum count', async () => {
+    responses['/taipei'] = () => [200, taipeiStations(600).map(({ latitude, longitude, ...rest }) => rest)]
+    const { code, stderr } = await run()
+    expect(code).not.toBe(0)
+    expect(stderr).toContain('Taipei YouBike active stations: got 0, expected at least 500')
+    expect(await readData()).toEqual(SEED)
+  })
+
   it('leaves no temp directory behind', async () => {
     await run()
     const siblings = await readdir(join(dataDir, '..'))

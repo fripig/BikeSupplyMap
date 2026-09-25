@@ -52,6 +52,11 @@ The site SHALL provide one toggle per category — 便利商店 (convenience), �
 - **WHEN** a station is selected and the user turns off 便利商店
 - **THEN** no convenience-category shop appears in the list or on the map, and other categories are unchanged
 
+#### Scenario: All categories turned off
+
+- **WHEN** a station is selected and the user turns off all four categories
+- **THEN** the list shows `請至少選擇一種店家類型` instead of the empty-range message, and no shop marker is shown
+
 ### Requirement: Google Maps walking directions link
 
 Each listed shop SHALL provide a link that opens Google Maps walking directions in a new tab, using the URL `https://www.google.com/maps/dir/?api=1&origin=<station lat>,<station lng>&destination=<shop lat>,<shop lng>&travelmode=walking`. The site SHALL NOT compute or draw routes itself.

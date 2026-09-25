@@ -57,7 +57,7 @@ watch(selected, async () => {
         <template v-if="selected">
           <h2 ref="stationHeading" class="station-name">{{ selected.name }}</h2>
           <p class="station-meta">{{ selected.city }}{{ selected.district }} · 附近 {{ nearby.length }} 家</p>
-          <ShopList :station="selected" :items="nearby" />
+          <ShopList :station="selected" :items="nearby" :no-category-selected="enabledCategories.size === 0" />
         </template>
         <p v-else-if="status === 'ready'" class="hint">點地圖上的 YouBike 站點，查看附近可以補給的店家。</p>
       </div>

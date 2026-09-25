@@ -83,12 +83,13 @@ function drawSelection() {
   }
 }
 
-// Zoom to the radius when a station is picked or the radius changes.
-watch(() => [props.selected, props.radius] as const, () => {
-  drawSelection()
-  if (radiusCircle && map) map.fitBounds(radiusCircle.getBounds(), { padding: [16, 16] })
-})
+// `nearby` changes whenever the station, radius or categories change, so it alone
+// drives the redraw. Picking a station or changing the radius also refits the
+// view; flush: 'post' lets the redraw above create the new circle first.
 watch(() => props.nearby, drawSelection)
+watch(() => [props.selected, props.radius] as const, () => {
+  if (radiusCircle && map) map.fitBounds(radiusCircle.getBounds(), { padding: [16, 16] })
+}, { flush: 'post' })
 </script>
 
 <template>

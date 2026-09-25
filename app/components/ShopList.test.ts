@@ -12,6 +12,12 @@ describe('ShopList', () => {
     expect(wrapper.findAll('li')).toHaveLength(0)
   })
 
+  it('asks for a category instead of a wider range when every category is off', () => {
+    const wrapper = mount(ShopList, { props: { station, items: [], noCategorySelected: true } })
+    expect(wrapper.text()).toContain('請至少選擇一種店家類型')
+    expect(wrapper.text()).not.toContain('試試擴大範圍')
+  })
+
   it('lists shops with category, straight-line distance and a walking directions link', () => {
     const wrapper = mount(ShopList, {
       props: {

@@ -7,12 +7,14 @@ import { directionsUrl } from '~/utils/links'
 defineProps<{
   station: Station
   items: NearbyShop[]
+  noCategorySelected?: boolean
 }>()
 </script>
 
 <template>
   <div>
-    <p v-if="items.length === 0" class="empty">這個範圍內沒有店家，試試擴大範圍</p>
+    <p v-if="noCategorySelected" class="empty">請至少選擇一種店家類型</p>
+    <p v-else-if="items.length === 0" class="empty">這個範圍內沒有店家，試試擴大範圍</p>
     <ol v-else class="shop-list">
       <li v-for="{ shop, distance } in items" :key="shop.id" class="shop">
         <span class="shop__dot" :style="{ background: CATEGORY_COLORS[shop.category] }" aria-hidden="true" />

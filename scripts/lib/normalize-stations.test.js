@@ -30,3 +30,25 @@ describe('normalizeNewTaipei', () => {
     expect(normalizeNewTaipei({ sno: '1', sna: 'x', sarea: 'y', lat: '25', lng: '121', act: '0' })).toBeNull()
   })
 })
+
+describe('coordinate validation', () => {
+  const taipei = (coords) => ({ sno: '1', sna: 'x', sarea: 'y', act: '1', ...coords })
+  const newTaipei = (coords) => ({ sno: '1', sna: 'x', sarea: 'y', act: '1', ...coords })
+
+  it.each([
+    ['missing', {}],
+    ['empty string', { latitude: '', longitude: '' }],
+    ['non-numeric', { latitude: 'N/A', longitude: 121.5 }],
+    ['null', { latitude: null, longitude: 121.5 }],
+  ])('drops a Taipei record with %s coordinates', (_, coords) => {
+    expect(normalizeTaipei(taipei(coords))).toBeNull()
+  })
+
+  it.each([
+    ['missing', {}],
+    ['empty string', { lat: '', lng: '' }],
+    ['non-numeric', { lat: '25.1', lng: 'abc' }],
+  ])('drops a New Taipei record with %s coordinates', (_, coords) => {
+    expect(normalizeNewTaipei(newTaipei(coords))).toBeNull()
+  })
+})
