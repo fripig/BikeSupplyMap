@@ -23,7 +23,7 @@ npm run dev          # 開發伺服器：http://localhost:3000/BikeSupplyMap/
 npm test             # 單元測試（Vitest）
 npm run fetch-data   # 重新抓取站點與店家資料，寫入 public/data/
 npm run generate     # 產生靜態網站到 .output/public/
-npm run preview      # 預覽產生的靜態網站
+npm run preview      # 預覽產生的靜態網站：http://localhost:3001/BikeSupplyMap/
 ```
 
 `npm run fetch-data` 任何一個來源失敗、回傳格式不對，或筆數少於下限（臺北、新北各 500 站，店家 2000 家）時，會以非 0 結束，且不會覆蓋 `public/data/` 裡既有的檔案。
