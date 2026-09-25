@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { nearbyShops, type Category, type Shop, type Station } from '~/utils/geo'
 import { CATEGORIES, DEFAULT_RADIUS } from '~/utils/categories'
+import { formatDataDate } from '~/utils/format'
 
 const { app } = useRuntimeConfig()
 
 const stations = shallowRef<Station[]>([])
 const shops = shallowRef<Shop[]>([])
 const status = ref<'loading' | 'ready' | 'error'>('loading')
+const dataDate = ref<string | null>(null)
 
 const selected = shallowRef<Station | null>(null)
 const radius = ref(DEFAULT_RADIUS)
@@ -23,6 +25,11 @@ async function loadJson<T>(name: string): Promise<T> {
 }
 
 onMounted(async () => {
+  // The data date is informative only; the map works without it.
+  loadJson<{ generatedAt: string }>('meta.json')
+    .then((meta) => { dataDate.value = formatDataDate(meta.generatedAt) })
+    .catch((err) => console.warn(err))
+
   try {
     ;[stations.value, shops.value] = await Promise.all([
       loadJson<Station[]>('stations.json'),
@@ -33,6 +40,14 @@ onMounted(async () => {
     console.error(err)
     status.value = 'error'
   }
+})
+
+// On narrow screens the list sits below the map; bring it into view after a pick.
+const stationHeading = ref<HTMLElement>()
+watch(selected, async () => {
+  if (!window.matchMedia('(max-width: 767px)').matches) return
+  await nextTick()
+  stationHeading.value?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 })
 </script>
 
@@ -46,12 +61,21 @@ onMounted(async () => {
 
       <div class="panel__body">
         <template v-if="selected">
-          <h2 class="station-name">{{ selected.name }}</h2>
+          <h2 ref="stationHeading" class="station-name">{{ selected.name }}</h2>
           <p class="station-meta">{{ selected.city }}{{ selected.district }} · 附近 {{ nearby.length }} 家</p>
           <ShopList :station="selected" :items="nearby" />
         </template>
         <p v-else-if="status === 'ready'" class="hint">點地圖上的 YouBike 站點，查看附近可以補給的店家。</p>
       </div>
+
+      <footer class="credits">
+        <p v-if="dataDate">資料日期：{{ dataDate }}</p>
+        <p>
+          店家資料 ©
+          <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap 貢獻者</a>（ODbL）；
+          站點資料來源：<a href="https://data.taipei/" target="_blank" rel="noopener">臺北市資料大平臺</a>、<a href="https://data.ntpc.gov.tw/" target="_blank" rel="noopener">新北市政府資料開放平臺</a>（政府資料開放授權條款）。
+        </p>
+      </footer>
     </aside>
 
     <section class="map-pane">
@@ -147,5 +171,61 @@ body {
 
 .notice--error {
   color: #b42318;
+}
+
+.credits {
+  padding: 0.6rem 1rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.72rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.credits p {
+  margin: 0;
+}
+
+.credits a {
+  color: inherit;
+}
+
+/* Phone: controls on top, map in the middle, list and credits below; the page scrolls. */
+@media (max-width: 767px) {
+  html, body, #__nuxt {
+    height: auto;
+  }
+
+  .layout {
+    display: grid;
+    grid-template-areas: "header" "map" "body" "credits";
+    height: auto;
+  }
+
+  .panel {
+    display: contents;
+  }
+
+  .panel__header {
+    grid-area: header;
+  }
+
+  .map-pane {
+    grid-area: map;
+    height: 55vh;
+    height: 55dvh;
+  }
+
+  .panel__body {
+    grid-area: body;
+    overflow: visible;
+  }
+
+  .credits {
+    grid-area: credits;
+  }
+
+  .station-name {
+    scroll-margin-top: 0.5rem;
+  }
 }
 </style>
