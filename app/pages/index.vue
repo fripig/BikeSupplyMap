@@ -2,8 +2,8 @@
 import { nearbyShops, type Category, type Shop, type Station } from '~/utils/geo'
 import { CATEGORIES, DEFAULT_RADIUS } from '~/utils/categories'
 import { formatDataDate } from '~/utils/format'
-import { useCyclingToggle, useRouteData } from '~/utils/cycling'
-import { createCyclingLoader, loadJson, loadRoutes, loadSupplyData } from '~/utils/load-data'
+import { useCyclingToggle, useLazyToggle, useRouteData } from '~/utils/cycling'
+import { createCyclingLoader, createJsonLoader, loadJson, loadRoutes, loadSupplyData, type ShelterData } from '~/utils/load-data'
 
 const { app } = useRuntimeConfig()
 
@@ -24,6 +24,13 @@ const {
 } = useCyclingToggle(createCyclingLoader(fetch, app.baseURL))
 const { data: routes, failed: routesFailed, start: startRoutes } = useRouteData(() => loadRoutes(fetch, app.baseURL))
 const cyclingFailed = computed(() => urbanFailed.value || routesFailed.value)
+// Rain shelters are off at first; shelters.json is fetched on the first turn-on.
+const {
+  show: showShelters,
+  data: shelters,
+  failed: shelterFailed,
+  start: startShelters,
+} = useLazyToggle(createJsonLoader<ShelterData>(fetch, app.baseURL, 'shelters.json'), false)
 
 const nearby = computed(() =>
   selected.value ? nearbyShops(selected.value, shops.value, radius.value, enabledCategories.value) : [],
@@ -34,6 +41,7 @@ onMounted(async () => {
   // message in the controls and leaves the rest of the map working.
   startRoutes()
   startCycling()
+  startShelters()
 
   // The data date is informative only; the map works without it.
   loadJson<{ generatedAt: string }>(fetch, app.baseURL, 'meta.json')
@@ -70,7 +78,9 @@ watch(selected, async () => {
           v-model:categories="enabledCategories"
           v-model:show-urban="showUrban"
           v-model:show-cycling="showCycling"
+          v-model:show-shelters="showShelters"
           :cycling-failed="cyclingFailed"
+          :shelter-failed="shelterFailed"
         />
       </header>
 
@@ -106,6 +116,8 @@ watch(selected, async () => {
           :show-cycling="showCycling"
           :cycling="cycling"
           :routes="routes"
+          :show-shelters="showShelters"
+          :shelters="shelters"
           :show-vending="enabledCategories.has('vending')"
           @select="selected = $event"
         />

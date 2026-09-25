@@ -38,17 +38,33 @@ export interface CyclingData {
   points: CyclingPoint[]
 }
 
-// cycling.json is fetched on first use only. A successful load is reused; a
-// failed one is forgotten so the next call tries again.
-export function createCyclingLoader(fetchFn: Fetch, baseURL: string): () => Promise<CyclingData> {
-  let pending: Promise<CyclingData> | null = null
+// A data file fetched on first use only. A successful load is reused; a failed
+// one is forgotten so the next call tries again.
+export function createJsonLoader<T>(fetchFn: Fetch, baseURL: string, name: string): () => Promise<T> {
+  let pending: Promise<T> | null = null
   return () => {
-    pending ??= loadJson<CyclingData>(fetchFn, baseURL, 'cycling.json').catch((err) => {
+    pending ??= loadJson<T>(fetchFn, baseURL, name).catch((err) => {
       pending = null
       throw err
     })
     return pending
   }
+}
+
+export const createCyclingLoader = (fetchFn: Fetch, baseURL: string) =>
+  createJsonLoader<CyclingData>(fetchFn, baseURL, 'cycling.json')
+
+// A place to wait out rain along a riverside route: under an elevated road or
+// railway (`bridge`, named after it), or an OSM shelter or roof (`shelter`).
+export interface Shelter {
+  kind: 'bridge' | 'shelter'
+  name: string | null
+  lat: number
+  lng: number
+}
+
+export interface ShelterData {
+  shelters: Shelter[]
 }
 
 export interface BikeRoute {

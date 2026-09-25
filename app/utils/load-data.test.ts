@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createCyclingLoader, loadRoutes, loadSupplyData } from './load-data'
+import { createCyclingLoader, createJsonLoader, loadRoutes, loadSupplyData } from './load-data'
 
 const ok = (body: unknown) => ({ ok: true, status: 200, json: async () => body })
 const notFound = { ok: false, status: 404, json: async () => ({}) }
@@ -54,6 +54,18 @@ describe('createCyclingLoader', () => {
     await expect(load()).rejects.toThrow('cycling.json: HTTP 404')
     await expect(load()).resolves.toEqual(layer)
     expect(fetchFn).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('createJsonLoader', () => {
+  it('loads the named file under the base URL on first call only', async () => {
+    const data = { shelters: [] }
+    const fetchFn = vi.fn(async () => ok(data))
+    const load = createJsonLoader(fetchFn, '/BikeSupplyMap/', 'shelters.json')
+    expect(fetchFn).not.toHaveBeenCalled()
+    await expect(load()).resolves.toEqual(data)
+    await load()
+    expect(fetchFn.mock.calls).toEqual([['/BikeSupplyMap/data/shelters.json']])
   })
 })
 

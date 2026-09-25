@@ -6,7 +6,8 @@ const radius = defineModel<number>('radius', { required: true })
 const categories = defineModel<Set<Category>>('categories', { required: true })
 const showUrban = defineModel<boolean>('showUrban', { required: true })
 const showCycling = defineModel<boolean>('showCycling', { required: true })
-defineProps<{ cyclingFailed?: boolean }>()
+const showShelters = defineModel<boolean>('showShelters', { required: true })
+defineProps<{ cyclingFailed?: boolean, shelterFailed?: boolean }>()
 
 function toggle(category: Category) {
   const next = new Set(categories.value)
@@ -29,6 +30,13 @@ function toggle(category: Category) {
     <span>都市自行車道</span>
   </label>
   <p v-if="cyclingFailed" class="switch__error" role="alert">自行車道資料載入失敗</p>
+
+  <label class="switch">
+    <input v-model="showShelters" type="checkbox" role="switch">
+    <span class="switch__track" aria-hidden="true" />
+    <span>躲雨點</span>
+  </label>
+  <p v-if="shelterFailed" class="switch__error" role="alert">躲雨點資料載入失敗</p>
 
   <fieldset class="controls">
     <legend class="controls__legend">範圍（直線距離）</legend>

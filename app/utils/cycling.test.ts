@@ -1,6 +1,6 @@
 import { nextTick } from 'vue'
 import { describe, expect, it, vi } from 'vitest'
-import { cyclingDashArray, cyclingVisibility, legendEntries, useCyclingToggle, useRouteData, vendingLabel } from './cycling'
+import { cyclingDashArray, cyclingVisibility, legendEntries, shelterLabel, useCyclingToggle, useLazyToggle, useRouteData, vendingLabel } from './cycling'
 
 const layer = { paths: [], points: [] }
 const flush = async () => {
@@ -89,17 +89,79 @@ describe('useCyclingToggle', () => {
   })
 })
 
+describe('useLazyToggle starting off', () => {
+  const shelters = { shelters: [] }
+
+  it('does not load on start while off, then loads once across on, off and on', async () => {
+    const load = vi.fn(async () => shelters)
+    const toggle = useLazyToggle(load, false)
+    expect(toggle.show.value).toBe(false)
+    await toggle.start()
+    expect(load).not.toHaveBeenCalled()
+    toggle.show.value = true
+    await flush()
+    toggle.show.value = false
+    await flush()
+    toggle.show.value = true
+    await flush()
+    expect(load).toHaveBeenCalledTimes(1)
+    expect(toggle.data.value).toBe(shelters)
+  })
+
+  it('turns back off with a failure flag, hides it while retrying, and retries on the next turn-on', async () => {
+    let finishRetry = (_: typeof shelters) => {}
+    const load = vi.fn()
+      .mockRejectedValueOnce(new Error('shelters.json: HTTP 404'))
+      .mockImplementationOnce(() => new Promise((resolve) => { finishRetry = resolve }))
+    const toggle = useLazyToggle(load, false)
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    await toggle.start()
+    toggle.show.value = true
+    await flush()
+    expect(toggle.show.value).toBe(false)
+    expect(toggle.failed.value).toBe(true)
+    toggle.show.value = true
+    await flush()
+    // The retry is still pending: the failure message is already hidden.
+    expect(load).toHaveBeenCalledTimes(2)
+    expect(toggle.data.value).toBeNull()
+    expect(toggle.failed.value).toBe(false)
+    finishRetry(shelters)
+    await flush()
+    expect(toggle.data.value).toBe(shelters)
+    expect(toggle.show.value).toBe(true)
+  })
+})
+
 describe('legendEntries', () => {
-  const labels = (routes: boolean, vending: boolean, urban: boolean) => legendEntries(routes, urban, vending).map((e) => e.label)
+  const labels = (routes: boolean, vending: boolean, shelters: boolean, urban: boolean) =>
+    legendEntries(routes, urban, vending, shelters).map((e) => e.label)
+  const ROUTES = ['河濱自行車道', '橋梁自行車道', '連接道路']
+  const URBAN = ['自行車道', '自行車道（畫線）', '紅綠燈', '穿越道']
+  const SHELTERS = ['橋下躲雨點', '涼亭躲雨點']
 
   it.each([
-    [true, true, true, ['河濱自行車道', '橋梁自行車道', '連接道路', '自動販賣機', '自行車道', '自行車道（畫線）', '紅綠燈', '穿越道']],
-    [true, true, false, ['河濱自行車道', '橋梁自行車道', '連接道路', '自動販賣機']],
-    [true, false, false, ['河濱自行車道', '橋梁自行車道', '連接道路']],
-    [false, true, true, ['自行車道', '自行車道（畫線）', '紅綠燈', '穿越道']],
-    [false, true, false, []],
-  ])('routes drawn=%s, vending on=%s, urban on=%s', (routes, vending, urban, expected) => {
-    expect(labels(routes, vending, urban)).toEqual(expected)
+    [true, true, false, true, [...ROUTES, '自動販賣機', ...URBAN]],
+    [true, true, true, true, [...ROUTES, '自動販賣機', ...SHELTERS, ...URBAN]],
+    [true, true, false, false, [...ROUTES, '自動販賣機']],
+    [true, false, true, false, [...ROUTES, ...SHELTERS]],
+    [true, false, false, false, ROUTES],
+    [false, true, false, true, URBAN],
+    [false, true, true, false, SHELTERS],
+    [false, true, false, false, []],
+  ])('routes drawn=%s, vending on=%s, shelters on=%s, urban on=%s', (routes, vending, shelters, urban, expected) => {
+    expect(labels(routes, vending, shelters, urban)).toEqual(expected)
+  })
+})
+
+describe('shelterLabel', () => {
+  it.each([
+    ['bridge', '中正橋', '中正橋 · 橋下'],
+    ['bridge', null, '高架橋下'],
+    ['shelter', '單車道終點涼亭', '單車道終點涼亭'],
+    ['shelter', null, '涼亭'],
+  ] as const)('%s + %s → %s', (kind, name, expected) => {
+    expect(shelterLabel(kind, name)).toBe(expected)
   })
 })
 

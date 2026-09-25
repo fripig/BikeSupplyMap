@@ -1,11 +1,14 @@
 import { expect, test, type Page } from '@playwright/test'
-import { vendingLabel } from '../app/utils/cycling'
+import { shelterLabel, vendingLabel } from '../app/utils/cycling'
 import { haversineMeters } from '../app/utils/geo'
-import type { RouteVending } from '../app/utils/load-data'
+import type { RouteVending, ShelterData } from '../app/utils/load-data'
 import { isVendingTeal, loadRoutes, loadStations, nextFrames, openMap, setView, toPagePoint, type LatLng } from './helpers'
 
 const legend = (page: Page) => page.locator('.cycling-legend')
 const vendingChip = (page: Page) => page.getByRole('button', { name: '自動販賣機' })
+// The switch input is visually hidden; its label takes the click.
+const shelterSwitch = (page: Page) => page.locator('label.switch', { hasText: '躲雨點' })
+const shelterIcons = (page: Page) => page.locator('.shelter-icon')
 
 async function vendingDrawnAt(page: Page, at: LatLng) {
   await nextFrames(page)
@@ -83,5 +86,80 @@ test('a riverside station on a route can be selected', async ({ page }) => {
   if (!station) throw new Error('stations.json has no riverside station clear of neighbours')
   await setView(page, [station.lat, station.lng], 18)
   await page.getByTitle(station.name, { exact: true }).first().click()
+  await expect(page.locator('.station-name')).toHaveText(station.name)
+})
+
+test('rain shelters are not fetched until the 躲雨點 switch is turned on', async ({ page }) => {
+  const requested = () => page.evaluate(() =>
+    performance.getEntriesByType('resource').some((e) => e.name.endsWith('/data/shelters.json')))
+  expect(await requested()).toBe(false)
+  await expect(shelterIcons(page)).toHaveCount(0)
+  await expect(legend(page)).not.toContainText('橋下躲雨點')
+
+  await shelterSwitch(page).click()
+  await expect(legend(page)).toContainText('橋下躲雨點')
+  await expect(legend(page)).toContainText('涼亭躲雨點')
+  expect(await requested()).toBe(true)
+  expect(await shelterIcons(page).count()).toBeGreaterThan(0)
+
+  await shelterSwitch(page).click()
+  await expect(shelterIcons(page)).toHaveCount(0)
+  await expect(legend(page)).not.toContainText('橋下躲雨點')
+})
+
+test('a bridge shelter icon shows its name with 橋下', async ({ page }) => {
+  const { shelters } = await (await page.request.get('data/shelters.json')).json() as ShelterData
+  // A named bridge spot with no riverside station close enough to cover its icon.
+  const riverside = (await loadStations(page)).filter((s) => s.riverside)
+  const spot = shelters.find((s) => s.kind === 'bridge' && s.name
+    && riverside.every((st) => haversineMeters(st, s) > 40))
+  if (!spot) throw new Error('shelters.json has no named bridge spot clear of stations')
+  await shelterSwitch(page).click()
+  await setView(page, [spot.lat, spot.lng], 17)
+  const label = shelterLabel(spot.kind, spot.name)
+  await page.getByTitle(label, { exact: true }).first().click()
+  await expect(page.locator('.leaflet-popup-content')).toHaveText(label)
+})
+
+test('a failed shelters.json load shows a message, turns the switch off and leaves stations working', async ({ page }) => {
+  await page.route('**/data/shelters.json', (route) => route.fulfill({ status: 404, body: 'not found' }))
+  await shelterSwitch(page).click()
+  await expect(page.getByRole('alert').filter({ hasText: '躲雨點資料載入失敗' })).toBeVisible()
+  await expect(page.getByRole('switch', { name: '躲雨點' })).not.toBeChecked()
+  await expect(shelterIcons(page)).toHaveCount(0)
+  // Same station choice as the riverside station test below.
+  const riverside = (await loadStations(page)).filter((s) => s.riverside)
+  const station = riverside.find((s) => riverside.every((o) => o === s || haversineMeters(s, o) > 40))!
+  await setView(page, [station.lat, station.lng], 18)
+  await page.getByTitle(station.name, { exact: true }).first().click()
+  await expect(page.locator('.station-name')).toHaveText(station.name)
+})
+
+test('a station marker overlapping a shelter icon stays selectable', async ({ page }) => {
+  const { shelters } = await (await page.request.get('data/shelters.json')).json() as ShelterData
+  // A riverside station with a shelter within 15 m and no other riverside
+  // station within 70 m, so at zoom 17 it is not clustered.
+  const riverside = (await loadStations(page)).filter((s) => s.riverside)
+  const station = riverside.find((st) => riverside.every((o) => o === st || haversineMeters(st, o) > 70)
+    && shelters.some((s) => haversineMeters(st, s) <= 15))
+  if (!station) throw new Error('no riverside station has a shelter within 15 m')
+  await shelterSwitch(page).click()
+  await expect(shelterIcons(page).first()).toBeVisible()
+  await setView(page, [station.lat, station.lng], 17)
+  const marker = page.getByTitle(station.name, { exact: true }).first()
+  const a = (await marker.boundingBox())!
+  // Click inside the area where the station marker and a shelter icon overlap.
+  let overlap: { x: number, y: number } | undefined
+  for (const icon of await shelterIcons(page).all()) {
+    const b = await icon.boundingBox()
+    if (!b) continue
+    const left = Math.max(a.x, b.x)
+    const right = Math.min(a.x + a.width, b.x + b.width)
+    const top = Math.max(a.y, b.y)
+    const bottom = Math.min(a.y + a.height, b.y + b.height)
+    if (left < right && top < bottom) overlap = { x: (left + right) / 2, y: (top + bottom) / 2 }
+  }
+  if (!overlap) throw new Error(`no shelter icon overlaps the ${station.name} marker at zoom 17`)
+  await page.mouse.click(overlap.x, overlap.y)
   await expect(page.locator('.station-name')).toHaveText(station.name)
 })

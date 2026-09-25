@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-25T14:11:44.591Z",
+  "generatedAt": "2026-09-25T15:29:45.062Z",
   "counts": {
     "stations": 3366,
     "riversideStations": 326,
@@ -13,6 +13,10 @@
     "cyclingPaths": 1303,
     "cyclingPoints": 3907,
     "bridgeRoutes": 19,
-    "routeVending": 70
+    "routeVending": 70,
+    "shelters": {
+      "bridge": 157,
+      "shelter": 175
+    }
   }
 }

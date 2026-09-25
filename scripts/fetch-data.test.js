@@ -32,12 +32,13 @@ const overpassBody = (n, vending = 120, nearRoute = 100) => ({
 
 // Riverside routes whose single way runs through the fake Taipei stations at
 // (25.03, 121.54), so every Taipei station is riverside and no New Taipei one is.
+// The way runs 7 km east so the rain shelter fixture fits 80+ bridge spots.
 // ...plus `bridges` bridge routes over way 2, far from every station, and
 // two 重陽橋 main-span ways for the supplementary bridge list, and a 環騎臺北
 // loop sharing the riverside way 1 and owning way 5, far from every station.
 const routesBody = (n, bridges = 19, supplement = true, loop = true) => ({
   elements: [
-    { type: 'way', id: 1, geometry: [{ lat: 25.03, lon: 121.53 }, { lat: 25.03, lon: 121.55 }] },
+    { type: 'way', id: 1, geometry: [{ lat: 25.03, lon: 121.53 }, { lat: 25.03, lon: 121.6 }] },
     { type: 'way', id: 2, geometry: [{ lat: 24.9, lon: 121.4 }, { lat: 24.901, lon: 121.4 }] },
     ...(supplement ? [
       { type: 'way', id: 3, tags: { name: '重陽橋', highway: 'secondary', bridge: 'yes' }, geometry: [{ lat: 25.06, lon: 121.49 }, { lat: 25.06, lon: 121.491 }] },
@@ -53,6 +54,21 @@ const routesBody = (n, bridges = 19, supplement = true, loop = true) => ({
     ...Array.from({ length: bridges }, (_, i) => ({
       type: 'relation', id: 100 + i, tags: { route: 'bicycle', name: `測試${i}橋自行車道` }, members: [{ type: 'way', ref: 2 }],
     })),
+  ],
+})
+
+// Rain shelters: `bridges` bridges crossing the riverside way about 70 m apart,
+// and `shelters` shelters 20 m north of it, plus a bus shelter that is left out.
+const sheltersBody = (bridges = 90, shelters = 90) => ({
+  elements: [
+    ...Array.from({ length: bridges }, (_, i) => ({
+      type: 'way', id: 7000 + i, tags: { highway: 'primary', bridge: 'yes', name: `測試${i}大橋` },
+      geometry: [{ lat: 25.029, lon: 121.531 + i * 0.0007 }, { lat: 25.031, lon: 121.531 + i * 0.0007 }],
+    })),
+    ...Array.from({ length: shelters }, (_, i) => ({
+      type: 'node', id: 8000 + i, lat: 25.0302, lon: 121.531 + i * 0.0005, tags: { amenity: 'shelter' },
+    })),
+    { type: 'node', id: 9999, lat: 25.0302, lon: 121.54, tags: { amenity: 'shelter', shelter_type: 'public_transport' } },
   ],
 })
 
@@ -83,6 +99,7 @@ beforeAll(async () => {
     const route = url.pathname !== '/overpass' ? url.pathname
       : query.includes('"route"="bicycle"') ? '/routes'
         : query.includes('"highway"="cycleway"') ? '/cycling'
+          : query.includes('"amenity"="shelter"') ? '/shelters'
           : url.pathname
     const [status, body] = responses[route](url)
     res.writeHead(status, { 'Content-Type': 'application/json' })
@@ -100,6 +117,7 @@ const SEED = {
   'shops.json': '[\n{"id":"n0"}\n]\n',
   'cycling.json': '{"paths":[],"points":[]}\n',
   'routes.json': '{"routes":[]}\n',
+  'shelters.json': '{"shelters":[]}\n',
   'meta.json': '{"generatedAt":"2026-01-01T00:00:00.000Z"}\n',
 }
 
@@ -110,6 +128,7 @@ beforeEach(async () => {
     '/overpass': () => [200, overpassBody(2100)],
     '/routes': () => [200, routesBody(21)],
     '/cycling': () => [200, cyclingBody(1000, 2000)],
+    '/shelters': () => [200, sheltersBody()],
   }
   const root = await mkdtemp(join(tmpdir(), 'fetch-data-test-'))
   dataDir = join(root, 'data')
@@ -221,7 +240,7 @@ describe('fetch-data', () => {
     expect(routes[40]).toEqual({ kind: 'bridge', name: '重陽橋（人行道）', lines: [[[25.06, 121.49], [25.06, 121.491], [25.061, 121.492]]] })
     // The loop's riverside way 1 is left out; only its own way 5 remains.
     expect(routes[41]).toEqual({ kind: 'link', name: '環騎臺北（連接道路）', lines: [[[24.8, 121.3], [24.801, 121.3]]] })
-    expect(routes[0]).toEqual({ kind: 'riverside', name: '測試河0自行車道', lines: [[[25.03, 121.53], [25.03, 121.55]]] })
+    expect(routes[0]).toEqual({ kind: 'riverside', name: '測試河0自行車道', lines: [[[25.03, 121.53], [25.03, 121.6]]] })
     expect(routes[21]).toEqual({ kind: 'bridge', name: '測試0橋自行車道', lines: [[[24.9, 121.4], [24.901, 121.4]]] })
     expect(data['routes.json'].split('\n')[1]).toBe(JSON.stringify(routes[0]) + ',')
     expect(JSON.parse(data['meta.json']).counts.bridgeRoutes).toBe(19)
@@ -298,6 +317,35 @@ describe('fetch-data', () => {
     const data = await readData()
     expect(JSON.parse(data['cycling.json']).paths[0]).toEqual({ kind: 'cycleway', coords: [[25.2, 121.0], [25.2, 121.0005], [25.2, 121.001]] })
     expect(JSON.parse(data['meta.json']).counts.cyclingPaths).toBe(500)
+  })
+
+  it('writes rain shelters, bridge spots first, and reports their counts', async () => {
+    const { code, stdout } = await run()
+    expect(code).toBe(0)
+    expect(stdout).toContain('rain shelters: 90 under bridges, 90 shelters')
+    const data = await readData()
+    const { shelters } = JSON.parse(data['shelters.json'])
+    expect(shelters).toHaveLength(180)
+    expect(shelters[0]).toEqual({ kind: 'bridge', name: '測試0大橋', lat: 25.03, lng: 121.531 })
+    expect(shelters[90]).toEqual({ kind: 'shelter', name: null, lat: 25.0302, lng: 121.531 })
+    expect(data['shelters.json'].split('\n')[1]).toBe(JSON.stringify(shelters[0]) + ',')
+    expect(JSON.parse(data['meta.json']).counts.shelters).toEqual({ bridge: 90, shelter: 90 })
+  })
+
+  it('rejects too few bridge shelter spots and keeps previous data', async () => {
+    responses['/shelters'] = () => [200, sheltersBody(40, 120)]
+    const { code, stderr } = await run()
+    expect(code).not.toBe(0)
+    expect(stderr).toContain('bridge shelter spots: got 40, expected at least 80')
+    expect(await readData()).toEqual(SEED)
+  })
+
+  it('keeps previous data when the rain shelter query fails', async () => {
+    responses['/shelters'] = () => [504, '<html>error</html>']
+    const { code, stderr } = await run()
+    expect(code).not.toBe(0)
+    expect(stderr).toContain('HTTP 504')
+    expect(await readData()).toEqual(SEED)
   })
 
   it('rejects too few urban cycling paths and keeps previous data', async () => {

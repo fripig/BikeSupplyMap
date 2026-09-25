@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import type { Circle, Control, LayerGroup, Map as LeafletMap, Marker, MarkerCluster, MarkerClusterGroup } from 'leaflet'
 import { splitStations, type NearbyShop, type Station } from '~/utils/geo'
-import { cyclingDashArray, cyclingVisibility, legendEntries, vendingLabel } from '~/utils/cycling'
-import type { CyclingData, RouteData } from '~/utils/load-data'
+import { cyclingDashArray, cyclingVisibility, legendEntries, shelterLabel, vendingLabel } from '~/utils/cycling'
+import type { CyclingData, RouteData, ShelterData } from '~/utils/load-data'
 import { CATEGORY_COLORS, CATEGORY_LABELS } from '~/utils/categories'
 import { formatDistance } from '~/utils/format'
 import { directionsUrl } from '~/utils/links'
@@ -17,6 +17,8 @@ const props = defineProps<{
   cycling: CyclingData | null
   routes: RouteData | null
   showVending: boolean
+  showShelters: boolean
+  shelters: ShelterData | null
 }>()
 
 const emit = defineEmits<{
@@ -33,6 +35,7 @@ let urbanLayer: MarkerClusterGroup | undefined
 let bikeRenderer: import('leaflet').Canvas | undefined
 let routeLayer: LayerGroup | undefined
 let vendingLayer: LayerGroup | undefined
+let shelterLayer: LayerGroup | undefined
 let cyclingPaths: LayerGroup | undefined
 let cyclingPoints: LayerGroup | undefined
 let legend: Control | undefined
@@ -109,6 +112,7 @@ onMounted(async () => {
   drawSelection()
   drawRoutes()
   updateCyclingLayer()
+  updateShelterLayer()
 })
 
 onBeforeUnmount(() => map?.remove())
@@ -209,11 +213,36 @@ function buildCyclingLayers(data: CyclingData) {
   }
 }
 
-// The legend lists route entries while routes are drawn and urban entries while
-// the urban layer is on; it is hidden when neither is shown.
+// Rain shelters are square glyph icons, drawn once their data arrives and shown
+// while the 躲雨點 switch is on. They sit below the station markers so a station
+// at the same place stays selectable.
+function updateShelterLayer() {
+  if (!map) return
+  if (!shelterLayer && props.shelters) {
+    shelterLayer = L.layerGroup()
+    for (const s of props.shelters.shelters) {
+      const icon = L.divIcon({
+        className: 'shelter-icon', iconSize: [18, 18], html: s.kind === 'bridge' ? '橋' : '亭',
+      })
+      L.marker([s.lat, s.lng], { icon, zIndexOffset: -1000, title: shelterLabel(s.kind, s.name) })
+        .bindPopup(escapeHtml(shelterLabel(s.kind, s.name)))
+        .addTo(shelterLayer)
+    }
+  }
+  if (shelterLayer) {
+    if (props.showShelters) map.addLayer(shelterLayer)
+    else map.removeLayer(shelterLayer)
+  }
+  updateLegend()
+}
+
+// The legend lists route entries while routes are drawn, shelter entries while
+// shelters are shown and urban entries while the urban layer is on; it is
+// hidden when none is shown.
 function updateLegend() {
   if (!map) return
-  const entries = legendEntries(!!routeLayer, !!cyclingPaths && map.hasLayer(cyclingPaths), props.showVending)
+  const sheltersShown = !!shelterLayer && map.hasLayer(shelterLayer)
+  const entries = legendEntries(!!routeLayer, !!cyclingPaths && map.hasLayer(cyclingPaths), props.showVending, sheltersShown)
     .map(({ label, icon }) => `<span><i class="cycling-legend__${icon}"></i>${label}</span>`)
   if (!legend) {
     legend = new L.Control({ position: 'bottomleft' })
@@ -245,6 +274,7 @@ function updateCyclingLayer() {
 watch(() => props.routes, drawRoutes)
 watch(() => props.showVending, updateVendingLayer)
 watch(() => [props.showCycling, props.cycling] as const, updateCyclingLayer)
+watch(() => [props.showShelters, props.shelters] as const, updateShelterLayer)
 watch(() => props.showUrban, (show) => {
   if (!map || !urbanLayer) return
   if (show) map.addLayer(urbanLayer)
@@ -270,6 +300,19 @@ watch(() => [props.selected, props.radius] as const, () => {
   border: 2px solid #fff;
   border-radius: 50%;
   box-shadow: 0 0 0 1px rgb(0 0 0 / 35%);
+}
+
+.shelter-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #495057;
+  border: 1px solid #fff;
+  border-radius: 4px;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 35%);
+  color: #fff;
+  font-size: 11px;
+  line-height: 1;
 }
 
 .station-icon--urban {
@@ -328,6 +371,28 @@ watch(() => [props.selected, props.radius] as const, () => {
 
 .cycling-legend__line--link {
   border-top: 5px solid #9c6644;
+}
+
+.cycling-legend__glyph {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  background: #495057;
+  color: #fff;
+  font-size: 10px;
+  font-style: normal;
+  line-height: 1;
+}
+
+.cycling-legend__glyph--bridge::after {
+  content: "橋";
+}
+
+.cycling-legend__glyph--shelter::after {
+  content: "亭";
 }
 
 .cycling-legend__line--lane {

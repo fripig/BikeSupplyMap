@@ -1,5 +1,5 @@
 import { ref, shallowRef, watch, type Ref, type ShallowRef } from 'vue'
-import type { CyclingData, CyclingPath, RouteData } from './load-data'
+import type { CyclingData, CyclingPath, RouteData, Shelter } from './load-data'
 
 // Signals and crossings only mean something at street level.
 export const CYCLING_POINTS_MIN_ZOOM = 16
@@ -14,22 +14,24 @@ export function cyclingVisibility(switchOn: boolean, loaded: boolean, zoom: numb
 // Separate cycleways are solid lines, painted lanes dashed.
 export const cyclingDashArray = (kind: CyclingPath['kind']) => (kind === 'lane' ? '6 5' : undefined)
 
-export interface CyclingToggle {
+export interface LazyToggle<T> {
   show: Ref<boolean>
-  data: ShallowRef<CyclingData | null>
+  data: ShallowRef<T | null>
   failed: Ref<boolean>
   // Loads the data if the switch is on; the page calls it once mounted, so
   // nothing is fetched while the page is pre-rendered.
   start: () => Promise<void>
 }
 
-// The layer's switch state, on by default. Data is loaded by `start()` and then
-// whenever the switch is turned on without data; on failure the switch goes back
-// off with `failed` set, and turning it on again retries. A successful load is
-// never repeated.
-export function useCyclingToggle(load: () => Promise<CyclingData>): CyclingToggle {
-  const show = ref(true)
-  const data = shallowRef<CyclingData | null>(null)
+export type CyclingToggle = LazyToggle<CyclingData>
+
+// A layer switch, on or off at first as `initiallyOn` says. Data is loaded by
+// `start()` and then whenever the switch is turned on without data; on failure
+// the switch goes back off with `failed` set, and turning it on again retries.
+// A successful load is never repeated.
+export function useLazyToggle<T>(load: () => Promise<T>, initiallyOn: boolean): LazyToggle<T> {
+  const show = ref(initiallyOn)
+  const data = shallowRef<T | null>(null)
   const failed = ref(false)
   let started = false
   const ensureLoaded = async () => {
@@ -53,6 +55,9 @@ export function useCyclingToggle(load: () => Promise<CyclingData>): CyclingToggl
   return { show, data, failed, start }
 }
 
+// The urban bike-path layer's switch, on by default.
+export const useCyclingToggle = (load: () => Promise<CyclingData>): CyclingToggle => useLazyToggle(load, true)
+
 export interface LegendEntry {
   label: string
   // CSS modifier after `cycling-legend__`, naming the line or dot style.
@@ -73,16 +78,28 @@ export function vendingLabel(name: string | null, vending: string | null): strin
   return types.length ? `${label} · ${types.join('、')}` : label
 }
 
+// Popup text for a rain shelter: `<name> · 橋下` or 高架橋下 under a bridge, and
+// the shelter's name or 涼亭 otherwise.
+export function shelterLabel(kind: Shelter['kind'], name: string | null): string {
+  if (kind === 'bridge') return name ? `${name} · 橋下` : '高架橋下'
+  return name ?? '涼亭'
+}
+
 // Legend entries: route lines whenever routes are drawn, route-side vending
-// while routes are drawn and the 自動販賣機 category is on, and urban lines and
-// the signal and crossing dots while the urban layer is on.
-export function legendEntries(routesShown: boolean, urbanShown: boolean, vendingShown: boolean): LegendEntry[] {
+// while routes are drawn and the 自動販賣機 category is on, the two rain shelter
+// icons while shelters are drawn, and urban lines and the signal and crossing
+// dots while the urban layer is on.
+export function legendEntries(routesShown: boolean, urbanShown: boolean, vendingShown: boolean, sheltersShown: boolean): LegendEntry[] {
   const entries: LegendEntry[] = []
   if (routesShown) {
     entries.push({ label: '河濱自行車道', icon: 'line cycling-legend__line--riverside' })
     entries.push({ label: '橋梁自行車道', icon: 'line cycling-legend__line--bridge' })
     entries.push({ label: '連接道路', icon: 'line cycling-legend__line--link' })
     if (vendingShown) entries.push({ label: '自動販賣機', icon: 'dot cycling-legend__dot--vending' })
+  }
+  if (sheltersShown) {
+    entries.push({ label: '橋下躲雨點', icon: 'glyph cycling-legend__glyph--bridge' })
+    entries.push({ label: '涼亭躲雨點', icon: 'glyph cycling-legend__glyph--shelter' })
   }
   if (urbanShown) {
     entries.push({ label: '自行車道', icon: 'line' })

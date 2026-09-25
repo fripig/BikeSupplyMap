@@ -43,7 +43,7 @@ While the `都市自行車道` toggle is on, the site SHALL draw every path in `
 ---
 ### Requirement: Traffic signals and crossings along urban paths
 
-While the `都市自行車道` toggle is on and the map zoom is 16 or greater, the site SHALL mark every point in `cycling.json` with an icon by kind: one icon for `signal` (紅綠燈) and a different icon for `crossing` (穿越道). Below zoom 16 the site SHALL NOT show these markers. The site SHALL show a legend naming 河濱自行車道, 橋梁自行車道, and 連接道路 while route data is loaded, 自動販賣機 while route data is loaded and the 自動販賣機 category toggle is on, and additionally 自行車道, 自行車道（畫線）, 紅綠燈, and 穿越道 while the urban layer is on, each with its line or icon style.
+While the `都市自行車道` toggle is on and the map zoom is 16 or greater, the site SHALL mark every point in `cycling.json` with an icon by kind: one icon for `signal` (紅綠燈) and a different icon for `crossing` (穿越道). Below zoom 16 the site SHALL NOT show these markers. The site SHALL show a legend naming 河濱自行車道, 橋梁自行車道, and 連接道路 while route data is loaded, 自動販賣機 while route data is loaded and the 自動販賣機 category toggle is on, 橋下躲雨點 and 涼亭躲雨點 while the 躲雨點 switch is on and shelter data is loaded, and additionally 自行車道, 自行車道（畫線）, 紅綠燈, and 穿越道 while the urban layer is on, each with its line or icon style, in that order.
 
 #### Scenario: Markers depend on zoom
 
@@ -61,37 +61,46 @@ While the `都市自行車道` toggle is on and the map zoom is 16 or greater, t
 
 #### Scenario: Legend follows the layers
 
-- **WHEN** route data has loaded and the user turns the urban layer and the 自動販賣機 category toggle off and on
-- **THEN** the legend always lists 河濱自行車道, 橋梁自行車道, and 連接道路, lists 自動販賣機 only while the 自動販賣機 toggle is on, and lists the four urban entries only while the urban layer is on
+- **WHEN** route data has loaded and the user turns the urban layer, the 躲雨點 switch, and the 自動販賣機 category toggle off and on
+- **THEN** the legend always lists 河濱自行車道, 橋梁自行車道, and 連接道路, lists 自動販賣機 only while the 自動販賣機 toggle is on, lists 橋下躲雨點 and 涼亭躲雨點 only while the 躲雨點 switch is on, and lists the four urban entries only while the urban layer is on
 
 ##### Example: legend entries
 
-| Route data | 自動販賣機 toggle | Urban layer | Legend |
-| ---------- | ----------------- | ----------- | ------ |
-| loaded | on | on | 河濱自行車道, 橋梁自行車道, 連接道路, 自動販賣機, 自行車道, 自行車道（畫線）, 紅綠燈, 穿越道 |
-| loaded | on | off | 河濱自行車道, 橋梁自行車道, 連接道路, 自動販賣機 |
-| loaded | off | off | 河濱自行車道, 橋梁自行車道, 連接道路 |
-| not loaded | on | on | 自行車道, 自行車道（畫線）, 紅綠燈, 穿越道 |
-| not loaded | on | off | (no legend) |
+| Route data | 自動販賣機 toggle | 躲雨點 switch | Urban layer | Legend |
+| ---------- | ----------------- | ------------- | ----------- | ------ |
+| loaded | on | off | on | 河濱自行車道, 橋梁自行車道, 連接道路, 自動販賣機, 自行車道, 自行車道（畫線）, 紅綠燈, 穿越道 |
+| loaded | on | on | on | 河濱自行車道, 橋梁自行車道, 連接道路, 自動販賣機, 橋下躲雨點, 涼亭躲雨點, 自行車道, 自行車道（畫線）, 紅綠燈, 穿越道 |
+| loaded | on | off | off | 河濱自行車道, 橋梁自行車道, 連接道路, 自動販賣機 |
+| loaded | off | on | off | 河濱自行車道, 橋梁自行車道, 連接道路, 橋下躲雨點, 涼亭躲雨點 |
+| loaded | off | off | off | 河濱自行車道, 橋梁自行車道, 連接道路 |
+| not loaded | on | off | on | 自行車道, 自行車道（畫線）, 紅綠燈, 穿越道 |
+| not loaded | on | on | off | 橋下躲雨點, 涼亭躲雨點 |
+| not loaded | on | off | off | (no legend) |
 
 
 <!-- @trace
-source: add-loop-link-route
+source: add-rain-shelter-layer
 updated: 2026-09-25
 code:
-  - app/utils/load-data.ts
-  - app/utils/cycling.ts
-  - public/data/meta.json
-  - public/data/routes.json
+  - public/data/shelters.json
   - app/components/SupplyMap.client.vue
   - scripts/fetch-data.js
-  - scripts/lib/loop-routes.js
-  - scripts/lib/routes.js
+  - README.md
+  - app/utils/load-data.ts
+  - app/pages/index.vue
+  - public/data/meta.json
+  - scripts/lib/shelters.js
+  - app/utils/cycling.ts
+  - app/components/MapControls.vue
+  - scripts/lib/check-counts.js
 tests:
-  - app/utils/cycling.test.ts
+  - scripts/lib/shelters.test.js
+  - scripts/lib/check-counts.test.js
   - e2e/map.spec.ts
+  - app/components/MapControls.test.ts
+  - app/utils/load-data.test.ts
+  - app/utils/cycling.test.ts
   - scripts/fetch-data.test.js
-  - scripts/lib/routes.test.js
 -->
 
 ---

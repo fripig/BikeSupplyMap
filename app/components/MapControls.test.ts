@@ -10,8 +10,10 @@ const mountControls = (showUrban: boolean, extra: Record<string, unknown> = {}) 
     categories: new Set(CATEGORIES),
     showUrban,
     showCycling: false,
+    showShelters: false,
     'onUpdate:showUrban': () => {},
     'onUpdate:showCycling': () => {},
+    'onUpdate:showShelters': () => {},
     ...extra,
   },
 })
@@ -46,5 +48,21 @@ describe('MapControls urban bike-path switch', () => {
   it('shows the load failure message only when loading failed', () => {
     expect(mountControls(false).text()).not.toContain('自行車道資料載入失敗')
     expect(mountControls(false, { cyclingFailed: true }).text()).toContain('自行車道資料載入失敗')
+  })
+})
+
+describe('MapControls rain shelter switch', () => {
+  it('is labelled 躲雨點, starts off, and emits when toggled', async () => {
+    const wrapper = mountControls(false)
+    const input = switchLabelled(wrapper, '躲雨點').find<HTMLInputElement>('input')
+    expect(input.attributes('role')).toBe('switch')
+    expect(input.element.checked).toBe(false)
+    await input.setValue(true)
+    expect(wrapper.emitted('update:showShelters')).toEqual([[true]])
+  })
+
+  it('shows the load failure message only when loading failed', () => {
+    expect(mountControls(false).text()).not.toContain('躲雨點資料載入失敗')
+    expect(mountControls(false, { shelterFailed: true }).text()).toContain('躲雨點資料載入失敗')
   })
 })
