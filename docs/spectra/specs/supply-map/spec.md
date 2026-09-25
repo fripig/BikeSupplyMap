@@ -6,21 +6,6 @@ The browser map that lets a YouBike rider pick a station in Taipei City or New T
 
 ## Requirements
 
-### Requirement: Map shows all stations
-
-The site SHALL load `data/stations.json` and `data/shops.json` relative to the site base path, render an OpenStreetMap tile layer centered on Taipei, and show every station as a clustered marker. The user interface text SHALL be Traditional Chinese.
-
-#### Scenario: Stations appear on load
-
-- **WHEN** the user opens the site
-- **THEN** station markers (clustered at low zoom) cover both Taipei City and New Taipei City, and the OpenStreetMap attribution is visible
-
-#### Scenario: Data fails to load
-
-- **WHEN** either data file returns a non-200 response
-- **THEN** the site shows the message `資料載入失敗，請重新整理` and does not show an empty map without explanation
-
----
 ### Requirement: Selecting a station lists nearby shops
 
 When the user selects a station marker, the site SHALL highlight that station and list every shop whose straight-line (haversine) distance from the station is less than or equal to the selected radius, sorted by ascending distance. Each list item SHALL show the shop name (or the category label when `name` is `null`), the category label, and the distance rounded to the nearest 10 meters. Shops in the list SHALL also be shown as markers on the map, colored by category. The radius options SHALL be 300 m, 500 m, and 1000 m, with 500 m selected by default. The distance label SHALL state that it is straight-line distance.
@@ -96,3 +81,34 @@ The site SHALL display the data generation date from `data/meta.json` and credit
 
 - **WHEN** `meta.json` has `generatedAt` `2026-09-25T08:00:00Z`
 - **THEN** the page shows the data date as 2026-09-25
+
+---
+### Requirement: Map shows riverside stations by default
+
+The site SHALL load `data/stations.json` and `data/shops.json` relative to the site base path and render an OpenStreetMap tile layer. On load the site SHALL show every station whose `riverside` field is `true` as a clustered marker, SHALL NOT show stations whose `riverside` field is `false`, and SHALL fit the initial map view to the bounds of the riverside stations. The site SHALL provide a toggle labelled `顯示市區站點`, off by default; while it is on, the site SHALL also show every non-riverside station, drawn in a marker style visually distinct from riverside stations. Turning the toggle on or off SHALL NOT clear the selected station, its shop list, or its shop markers. The user interface text SHALL be Traditional Chinese.
+
+#### Scenario: Only riverside stations appear on load
+
+- **WHEN** the user opens the site
+- **THEN** only stations with `riverside: true` are shown (clustered at low zoom), the view frames those stations across both cities, the `顯示市區站點` toggle is off, and the OpenStreetMap attribution is visible
+
+##### Example: default visibility
+
+- **GIVEN** stations A (`riverside: true`), B (`riverside: true`), C (`riverside: false`)
+- **WHEN** the site finishes loading
+- **THEN** markers for A and B are on the map and no marker for C is on the map
+
+#### Scenario: Toggle adds urban stations
+
+- **WHEN** the user turns on `顯示市區站點`
+- **THEN** non-riverside stations appear in the urban marker style alongside the riverside stations, and turning the toggle off removes them again
+
+#### Scenario: Selection survives the toggle
+
+- **WHEN** the user turns on `顯示市區站點`, selects a non-riverside station, and then turns the toggle off
+- **THEN** that station stays selected with its highlight, shop list, and shop markers, while the other non-riverside station markers are removed
+
+#### Scenario: Data fails to load
+
+- **WHEN** either data file returns a non-200 response
+- **THEN** the site shows the message `資料載入失敗，請重新整理` and does not show an empty map without explanation
