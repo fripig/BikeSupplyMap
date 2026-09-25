@@ -85,12 +85,12 @@ The site SHALL display the data generation date from `data/meta.json` and credit
 ---
 ### Requirement: Map shows riverside stations by default
 
-The site SHALL load `data/stations.json` and `data/shops.json` relative to the site base path and render an OpenStreetMap tile layer. On load the site SHALL show every station whose `riverside` field is `true` as a clustered marker, SHALL NOT show stations whose `riverside` field is `false`, and SHALL fit the initial map view to the bounds of the riverside stations. The site SHALL provide a toggle labelled `顯示市區站點`, off by default; while it is on, the site SHALL also show every non-riverside station, drawn in a marker style visually distinct from riverside stations. Turning the toggle on or off SHALL NOT clear the selected station, its shop list, or its shop markers. The user interface text SHALL be Traditional Chinese.
+The site SHALL load `data/stations.json` and `data/shops.json` relative to the site base path and render the Esri World Light Gray Canvas base map with its reference (label) layer, crediting Esri and OpenStreetMap contributors in the map attribution. On load the site SHALL show every station whose `riverside` field is `true` as a clustered marker, SHALL NOT show stations whose `riverside` field is `false`, and SHALL fit the initial map view to the bounds of the riverside stations. The site SHALL provide a toggle labelled `顯示市區站點`, off by default; while it is on, the site SHALL also show every non-riverside station, drawn in a marker style visually distinct from riverside stations. Turning the toggle on or off SHALL NOT clear the selected station, its shop list, or its shop markers. The user interface text SHALL be Traditional Chinese.
 
 #### Scenario: Only riverside stations appear on load
 
 - **WHEN** the user opens the site
-- **THEN** only stations with `riverside: true` are shown (clustered at low zoom), the view frames those stations across both cities, the `顯示市區站點` toggle is off, and the OpenStreetMap attribution is visible
+- **THEN** only stations with `riverside: true` are shown (clustered at low zoom), the view frames those stations across both cities, the `顯示市區站點` toggle is off, the base map is Esri World Light Gray, and the attribution names Esri and OpenStreetMap
 
 ##### Example: default visibility
 
