@@ -4,6 +4,7 @@ import { CATEGORIES, CATEGORY_COLORS, CATEGORY_LABELS, RADIUS_OPTIONS } from '~/
 
 const radius = defineModel<number>('radius', { required: true })
 const categories = defineModel<Set<Category>>('categories', { required: true })
+const showUrban = defineModel<boolean>('showUrban', { required: true })
 
 function toggle(category: Category) {
   const next = new Set(categories.value)
@@ -14,6 +15,12 @@ function toggle(category: Category) {
 </script>
 
 <template>
+  <label class="switch">
+    <input v-model="showUrban" type="checkbox" role="switch">
+    <span class="switch__track" aria-hidden="true" />
+    <span>顯示市區站點</span>
+  </label>
+
   <fieldset class="controls">
     <legend class="controls__legend">範圍（直線距離）</legend>
     <div class="segmented" role="radiogroup" aria-label="範圍">
@@ -43,6 +50,58 @@ function toggle(category: Category) {
 </template>
 
 <style>
+.switch {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  min-height: 2rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.switch input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.switch__track {
+  position: relative;
+  flex: none;
+  width: 2.2rem;
+  height: 1.25rem;
+  border-radius: 999px;
+  background: var(--border);
+  transition: background 0.15s;
+}
+
+.switch__track::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: calc(1.25rem - 4px);
+  height: calc(1.25rem - 4px);
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 30%);
+  transition: transform 0.15s;
+}
+
+.switch input:checked + .switch__track {
+  background: var(--accent);
+}
+
+.switch input:checked + .switch__track::after {
+  transform: translateX(0.95rem);
+}
+
+.switch input:focus-visible + .switch__track {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .controls {
   margin: 0;
   padding: 0;

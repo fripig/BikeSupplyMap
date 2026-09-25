@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Circle, LayerGroup, Map as LeafletMap, Marker } from 'leaflet'
+import type { Circle, LayerGroup, Map as LeafletMap, Marker, MarkerCluster, MarkerClusterGroup } from 'leaflet'
 import type { NearbyShop, Station } from '~/utils/geo'
 import { CATEGORY_COLORS, CATEGORY_LABELS } from '~/utils/categories'
 import { formatDistance } from '~/utils/format'
@@ -10,6 +10,7 @@ const props = defineProps<{
   selected: Station | null
   nearby: NearbyShop[]
   radius: number
+  showUrban: boolean
 }>()
 
 const emit = defineEmits<{
@@ -22,6 +23,10 @@ let map: LeafletMap | undefined
 let shopLayer: LayerGroup | undefined
 let selectedMarker: Marker | undefined
 let radiusCircle: Circle | undefined
+let urbanLayer: MarkerClusterGroup | undefined
+
+// Shown when there are no riverside stations to frame.
+const FALLBACK_VIEW = { center: [25.0375, 121.5637] as [number, number], zoom: 13 }
 
 const escapeHtml = (s: string) =>
   s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!)
@@ -32,20 +37,37 @@ onMounted(async () => {
   ;(window as unknown as { L: typeof L }).L = L
   await import('leaflet.markercluster')
 
-  map = L.map(container.value!).setView([25.0375, 121.5637], 13)
+  map = L.map(container.value!)
   L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19,
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> 貢獻者',
   }).addTo(map)
 
-  const stationIcon = L.divIcon({ className: 'station-icon', iconSize: [14, 14] })
-  const stationLayer = L.markerClusterGroup({ showCoverageOnHover: false, maxClusterRadius: 50 })
+  // Riverside stations are always shown; urban stations sit in their own muted
+  // cluster group that the toggle adds or removes without touching the rest.
+  const riversideIcon = L.divIcon({ className: 'station-icon', iconSize: [14, 14] })
+  const urbanIcon = L.divIcon({ className: 'station-icon station-icon--urban', iconSize: [10, 10] })
+  const riversideLayer = L.markerClusterGroup({ showCoverageOnHover: false, maxClusterRadius: 50 })
+  urbanLayer = L.markerClusterGroup({
+    showCoverageOnHover: false,
+    maxClusterRadius: 50,
+    iconCreateFunction: (cluster: MarkerCluster) => L.divIcon({
+      html: `<span>${cluster.getChildCount()}</span>`,
+      className: 'urban-cluster',
+      iconSize: [30, 30],
+    }),
+  })
+  const riverside: Station[] = []
   for (const station of props.stations) {
-    L.marker([station.lat, station.lng], { icon: stationIcon, title: station.name })
+    if (station.riverside) riverside.push(station)
+    L.marker([station.lat, station.lng], { icon: station.riverside ? riversideIcon : urbanIcon, title: station.name })
       .on('click', () => emit('select', station))
-      .addTo(stationLayer)
+      .addTo(station.riverside ? riversideLayer : urbanLayer)
   }
-  map.addLayer(stationLayer)
+  if (riverside.length) map.fitBounds(L.latLngBounds(riverside.map((s) => [s.lat, s.lng])), { padding: [16, 16] })
+  else map.setView(FALLBACK_VIEW.center, FALLBACK_VIEW.zoom)
+  if (props.showUrban) map.addLayer(urbanLayer)
+  map.addLayer(riversideLayer)
   shopLayer = L.layerGroup().addTo(map)
 
   drawSelection()
@@ -87,6 +109,11 @@ function drawSelection() {
 // drives the redraw. Picking a station or changing the radius also refits the
 // view; flush: 'post' lets the redraw above create the new circle first.
 watch(() => props.nearby, drawSelection)
+watch(() => props.showUrban, (show) => {
+  if (!map || !urbanLayer) return
+  if (show) map.addLayer(urbanLayer)
+  else map.removeLayer(urbanLayer)
+})
 watch(() => [props.selected, props.radius] as const, () => {
   if (radiusCircle && map) map.fitBounds(radiusCircle.getBounds(), { padding: [16, 16] })
 }, { flush: 'post' })
@@ -107,6 +134,22 @@ watch(() => [props.selected, props.radius] as const, () => {
   border: 2px solid #fff;
   border-radius: 50%;
   box-shadow: 0 0 0 1px rgb(0 0 0 / 35%);
+}
+
+.station-icon--urban {
+  background: #adb5bd;
+  border-width: 1px;
+}
+
+.urban-cluster {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(173 181 189 / 75%);
+  border: 2px solid #fff;
+  border-radius: 50%;
+  color: #343a40;
+  font-size: 0.75rem;
 }
 
 .station-icon--selected {

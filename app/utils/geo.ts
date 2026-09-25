@@ -10,6 +10,8 @@ export interface Station extends LatLng {
   name: string
   city: string
   district: string
+  // Within 200 m of an OSM riverside bike-path route; set at build time.
+  riverside: boolean
 }
 
 export interface Shop extends LatLng {

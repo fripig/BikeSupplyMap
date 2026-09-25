@@ -23,14 +23,30 @@ const overpassBody = (n) => ({
   })),
 })
 
+// Riverside routes whose single way runs through the fake Taipei stations at
+// (25.03, 121.54), so every Taipei station is riverside and no New Taipei one is.
+const routesBody = (n) => ({
+  elements: [
+    { type: 'way', id: 1, geometry: [{ lat: 25.03, lon: 121.53 }, { lat: 25.03, lon: 121.55 }] },
+    ...Array.from({ length: n }, (_, i) => ({
+      type: 'relation', id: i + 1, tags: { route: 'bicycle', name: `測試河${i}自行車道` }, members: [{ type: 'way', ref: 1 }],
+    })),
+  ],
+})
+
 let server
 let baseUrl
 let responses
 
 beforeAll(async () => {
-  server = createServer((req, res) => {
+  server = createServer(async (req, res) => {
     const url = new URL(req.url, 'http://localhost')
-    const [status, body] = responses[url.pathname](url)
+    let form = ''
+    for await (const chunk of req) form += chunk
+    // Both Overpass queries go to one URL; tell them apart by the query text.
+    const query = new URLSearchParams(form).get('data') ?? ''
+    const route = url.pathname === '/overpass' && query.includes('"route"="bicycle"') ? '/routes' : url.pathname
+    const [status, body] = responses[route](url)
     res.writeHead(status, { 'Content-Type': 'application/json' })
     res.end(typeof body === 'string' ? body : JSON.stringify(body))
   })
@@ -48,6 +64,7 @@ beforeEach(async () => {
     '/taipei': () => [200, taipeiStations(600)],
     '/newtaipei': (url) => [200, url.searchParams.get('page') === '0' ? newTaipeiStations(600) : []],
     '/overpass': () => [200, overpassBody(2100)],
+    '/routes': () => [200, routesBody(21)],
   }
   const root = await mkdtemp(join(tmpdir(), 'fetch-data-test-'))
   dataDir = join(root, 'data')
@@ -84,6 +101,33 @@ describe('fetch-data', () => {
     expect(JSON.parse(data['stations.json'])).toHaveLength(1200)
     expect(JSON.parse(data['shops.json'])).toHaveLength(2100)
     expect(JSON.parse(data['meta.json']).counts.stations).toBe(1200)
+  })
+
+  it('marks stations near a riverside route and reports the count', async () => {
+    const { code, stdout } = await run()
+    expect(code).toBe(0)
+    expect(stdout).toContain('riverside: 21 routes, 600 stations')
+    const stations = JSON.parse((await readData())['stations.json'])
+    expect(stations.every((s) => typeof s.riverside === 'boolean')).toBe(true)
+    expect(stations.filter((s) => s.riverside)).toHaveLength(600)
+    expect(stations.find((s) => s.city === '新北市').riverside).toBe(false)
+    expect(JSON.parse((await readData())['meta.json']).counts.riversideStations).toBe(600)
+  })
+
+  it('rejects too few riverside routes and keeps previous data', async () => {
+    responses['/routes'] = () => [200, routesBody(4)]
+    const { code, stderr } = await run()
+    expect(code).not.toBe(0)
+    expect(stderr).toContain('riverside bike-path routes: got 4, expected at least 15')
+    expect(await readData()).toEqual(SEED)
+  })
+
+  it('keeps previous data when the riverside route query fails', async () => {
+    responses['/routes'] = () => [504, '<html>error</html>']
+    const { code, stderr } = await run()
+    expect(code).not.toBe(0)
+    expect(stderr).toContain('HTTP 504')
+    expect(await readData()).toEqual(SEED)
   })
 
   it.each([406, 504])('keeps previous data when Overpass returns HTTP %i', async (status) => {

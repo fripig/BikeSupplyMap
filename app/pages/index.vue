@@ -14,6 +14,7 @@ const dataDate = ref<string | null>(null)
 const selected = shallowRef<Station | null>(null)
 const radius = ref(DEFAULT_RADIUS)
 const enabledCategories = ref(new Set<Category>(CATEGORIES))
+const showUrban = ref(false)
 
 const nearby = computed(() =>
   selected.value ? nearbyShops(selected.value, shops.value, radius.value, enabledCategories.value) : [],
@@ -50,7 +51,7 @@ watch(selected, async () => {
     <aside class="panel">
       <header class="panel__header">
         <h1 class="panel__title">雙北 YouBike 補給地圖</h1>
-        <MapControls v-model:radius="radius" v-model:categories="enabledCategories" />
+        <MapControls v-model:radius="radius" v-model:categories="enabledCategories" v-model:show-urban="showUrban" />
       </header>
 
       <div class="panel__body">
@@ -59,7 +60,7 @@ watch(selected, async () => {
           <p class="station-meta">{{ selected.city }}{{ selected.district }} · 附近 {{ nearby.length }} 家</p>
           <ShopList :station="selected" :items="nearby" :no-category-selected="enabledCategories.size === 0" />
         </template>
-        <p v-else-if="status === 'ready'" class="hint">點地圖上的 YouBike 站點，查看附近可以補給的店家。</p>
+        <p v-else-if="status === 'ready'" class="hint">地圖預設只顯示河濱自行車道旁的 YouBike 站點，點站點查看附近可以補給的店家。要找市區站點，打開「顯示市區站點」。</p>
       </div>
 
       <footer class="credits">
@@ -81,6 +82,7 @@ watch(selected, async () => {
           :selected="selected"
           :nearby="nearby"
           :radius="radius"
+          :show-urban="showUrban"
           @select="selected = $event"
         />
       </ClientOnly>

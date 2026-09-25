@@ -1,7 +1,8 @@
 {
-  "generatedAt": "2026-09-25T08:44:04.621Z",
+  "generatedAt": "2026-09-25T09:33:51.788Z",
   "counts": {
     "stations": 3366,
+    "riversideStations": 326,
     "shops": {
       "convenience": 3791,
       "supermarket": 777,

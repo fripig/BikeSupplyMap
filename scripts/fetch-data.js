@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { checkCounts } from './lib/check-counts.js'
 import { classifyShop } from './lib/classify-shop.js'
 import { normalizeNewTaipei, normalizeTaipei } from './lib/normalize-stations.js'
+import { classifyRiverside, riversideSegments } from './lib/riverside.js'
 import { fetchAllPages } from './lib/paginate.js'
 
 // Source URLs and the output directory can be overridden by environment
@@ -24,10 +25,19 @@ const OVERPASS_URLS = process.env.OVERPASS_URL
 const USER_AGENT = 'BikeSupplyMap/0.1 (https://github.com/fripig/BikeSupplyMap)'
 const OUT_DIR = process.env.DATA_DIR ?? fileURLToPath(new URL('../public/data/', import.meta.url))
 
-const OVERPASS_QUERY = `[out:json][timeout:170];
-(area["name"="臺北市"]["admin_level"="4"];area["name"="新北市"]["admin_level"="4"];)->.a;
+const OVERPASS_AREA = '(area["name"="臺北市"]["admin_level"="4"];area["name"="新北市"]["admin_level"="4"];)->.a;'
+const SHOPS_QUERY = `[out:json][timeout:170];
+${OVERPASS_AREA}
 (nwr["shop"~"^(convenience|supermarket|wholesale|general|variety_store|greengrocer)$"](area.a););
 out center tags;`
+// Bicycle route relations with the geometry of their member ways; which of them
+// are riverside routes is decided in lib/riverside.js.
+const ROUTES_QUERY = `[out:json][timeout:170];
+${OVERPASS_AREA}
+rel["route"="bicycle"](area.a)->.r;
+way(r.r);
+out geom;
+.r out body;`
 
 async function fetchJson(label, url, init = {}) {
   let res
@@ -77,7 +87,7 @@ const OVERPASS_ROUNDS = 2
 const OVERPASS_RETRY_DELAY_MS = Number(process.env.OVERPASS_RETRY_DELAY_MS ?? 30_000)
 const isRetryable = (err) => !/HTTP 4(?!29)\d\d$/.test(err.message)
 
-async function fetchOverpass() {
+async function fetchOverpass(query) {
   let lastError
   for (let round = 1; round <= OVERPASS_ROUNDS; round++) {
     for (const url of OVERPASS_URLS) {
@@ -86,7 +96,7 @@ async function fetchOverpass() {
         const body = await fetchJson(label, url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: new URLSearchParams({ data: OVERPASS_QUERY }),
+          body: new URLSearchParams({ data: query }),
         })
         if (body.remark) throw new Error(`${label}: ${body.remark}`)
         expectArray(`${label} elements`, body.elements)
@@ -103,8 +113,12 @@ async function fetchOverpass() {
 }
 
 async function fetchShops() {
-  const body = await fetchOverpass()
+  const body = await fetchOverpass(SHOPS_QUERY)
   return body.elements.map(classifyShop).filter(Boolean)
+}
+
+async function fetchRiversideRoutes() {
+  return riversideSegments(await fetchOverpass(ROUTES_QUERY))
 }
 
 const round6 = (n) => Math.round(n * 1e6) / 1e6
@@ -129,15 +143,19 @@ async function writeAllOrNothing(files) {
 }
 
 async function main() {
-  const [taipei, newTaipei, shops] = await Promise.all([
+  // The two Overpass queries run one after the other so a public instance never
+  // sees two heavy requests from us at once.
+  const [taipei, newTaipei, [shops, riverside]] = await Promise.all([
     fetchTaipeiStations(),
     fetchNewTaipeiStations(),
-    fetchShops(),
+    fetchShops().then(async (shops) => [shops, await fetchRiversideRoutes()]),
   ])
 
-  const stations = [...taipei, ...newTaipei]
-    .map((s) => ({ ...s, lat: round6(s.lat), lng: round6(s.lng) }))
-    .sort(byId)
+  const stations = classifyRiverside(
+    [...taipei, ...newTaipei].map((s) => ({ ...s, lat: round6(s.lat), lng: round6(s.lng) })),
+    riverside.segments,
+  ).sort(byId)
+  const riversideStations = stations.filter((s) => s.riverside).length
   const sortedShops = shops
     .map((s) => ({ ...s, lat: round6(s.lat), lng: round6(s.lng) }))
     .sort(byId)
@@ -146,13 +164,15 @@ async function main() {
   for (const s of sortedShops) shopCounts[s.category]++
   const meta = {
     generatedAt: new Date().toISOString(),
-    counts: { stations: stations.length, shops: shopCounts },
+    counts: { stations: stations.length, riversideStations, shops: shopCounts },
   }
 
   const problems = checkCounts({
     taipeiStations: taipei.length,
     newTaipeiStations: newTaipei.length,
     shops: sortedShops.length,
+    riversideRoutes: riverside.routes.length,
+    riversideStations,
   })
   if (problems.length) throw new Error(`refusing to publish incomplete data:\n  ${problems.join('\n  ')}`)
 
@@ -163,6 +183,7 @@ async function main() {
   })
 
   console.log(`stations: 臺北市 ${taipei.length}, 新北市 ${newTaipei.length}`)
+  console.log(`riverside: ${riverside.routes.length} routes, ${riversideStations} stations`)
   console.log(`shops: ${Object.entries(shopCounts).map(([k, v]) => `${k} ${v}`).join(', ')}`)
 }
 

@@ -3,7 +3,7 @@ import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import ShopList from './ShopList.vue'
 
-const station = { id: 's1', name: '金華國中', city: '臺北市', district: '大安區', lat: 25.02605, lng: 121.5436 }
+const station = { id: 's1', name: '金華國中', city: '臺北市', district: '大安區', lat: 25.02605, lng: 121.5436, riverside: false }
 
 describe('ShopList', () => {
   it('shows the empty-range message when no shop is within the radius', () => {
