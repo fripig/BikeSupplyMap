@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Circle, Control, LayerGroup, Map as LeafletMap, Marker, MarkerCluster, MarkerClusterGroup } from 'leaflet'
 import { splitStations, type NearbyShop, type Station } from '~/utils/geo'
+import { cyclingDashArray, cyclingVisibility } from '~/utils/cycling'
 import type { CyclingData } from '~/utils/load-data'
 import { CATEGORY_COLORS, CATEGORY_LABELS } from '~/utils/categories'
 import { formatDistance } from '~/utils/format'
@@ -31,8 +32,6 @@ let cyclingPaths: LayerGroup | undefined
 let cyclingPoints: LayerGroup | undefined
 let cyclingLegend: Control | undefined
 
-// Signals and crossings only mean something at street level.
-const CYCLING_POINTS_MIN_ZOOM = 16
 const CYCLING_COLOR = '#2f9e44'
 
 // Shown when there are no riverside stations to frame.
@@ -133,7 +132,7 @@ function buildCyclingLayers(data: CyclingData) {
   for (const path of data.paths) {
     L.polyline(path.coords, {
       renderer, interactive: false, color: CYCLING_COLOR, weight: 3, opacity: 0.85,
-      dashArray: path.kind === 'lane' ? '6 5' : undefined,
+      dashArray: cyclingDashArray(path.kind),
     }).addTo(cyclingPaths)
   }
   cyclingPoints = L.layerGroup()
@@ -158,10 +157,9 @@ function buildCyclingLayers(data: CyclingData) {
 // switch, the loaded data and the current zoom.
 function updateCyclingLayer() {
   if (!map) return
-  const on = props.showCycling && props.cycling !== null
+  const { paths: on, points: showPoints } = cyclingVisibility(props.showCycling, props.cycling !== null, map.getZoom())
   if (on && !cyclingPaths) buildCyclingLayers(props.cycling!)
   if (!cyclingPaths || !cyclingPoints || !cyclingLegend) return
-  const showPoints = on && map.getZoom() >= CYCLING_POINTS_MIN_ZOOM
   if (on) {
     if (!map.hasLayer(cyclingPaths)) {
       map.addLayer(cyclingPaths)

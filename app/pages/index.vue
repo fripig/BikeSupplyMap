@@ -2,7 +2,8 @@
 import { nearbyShops, type Category, type Shop, type Station } from '~/utils/geo'
 import { CATEGORIES, DEFAULT_RADIUS } from '~/utils/categories'
 import { formatDataDate } from '~/utils/format'
-import { createCyclingLoader, loadJson, loadSupplyData, type CyclingData } from '~/utils/load-data'
+import { useCyclingToggle } from '~/utils/cycling'
+import { createCyclingLoader, loadJson, loadSupplyData } from '~/utils/load-data'
 
 const { app } = useRuntimeConfig()
 
@@ -15,24 +16,11 @@ const selected = shallowRef<Station | null>(null)
 const radius = ref(DEFAULT_RADIUS)
 const enabledCategories = ref(new Set<Category>(CATEGORIES))
 const showUrban = ref(false)
-const showCycling = ref(false)
-const cycling = shallowRef<CyclingData | null>(null)
-const cyclingFailed = ref(false)
-const loadCycling = createCyclingLoader(fetch, app.baseURL)
-
-// The bike-path layer is fetched the first time it is turned on. On failure the
-// switch goes back off with a message, and turning it on again retries.
-watch(showCycling, async (on) => {
-  if (!on || cycling.value) return
-  cyclingFailed.value = false
-  try {
-    cycling.value = await loadCycling()
-  } catch (err) {
-    console.error(err)
-    cyclingFailed.value = true
-    showCycling.value = false
-  }
-})
+const {
+  show: showCycling,
+  data: cycling,
+  failed: cyclingFailed,
+} = useCyclingToggle(createCyclingLoader(fetch, app.baseURL))
 
 const nearby = computed(() =>
   selected.value ? nearbyShops(selected.value, shops.value, radius.value, enabledCategories.value) : [],

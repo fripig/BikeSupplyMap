@@ -18,7 +18,7 @@ A probe against Overpass on 2026-09-25 measured, for Taipei City and New Taipei 
 
 **Non-Goals:**
 
-- Sidewalk shared paths (人車共道, `highway=footway` with `bicycle=yes|designated`): 3074 ways measured; including them would cover most of downtown and bury the actual bike network.
+- Sidewalk shared paths (人車共道, `highway=footway` with `bicycle=yes|designated`): 3074 ways measured; including them would cover most of downtown and bury the actual bike network. The classifier therefore rejects every way whose `highway` is `footway`, `pedestrian`, `path`, `steps`, or `sidewalk`, even when it carries a `cycleway*=lane|track` tag.
 - Drawing the riverside routes themselves.
 - Signals and crossings away from the urban paths.
 - Routing, turn-by-turn directions, or signal timing.

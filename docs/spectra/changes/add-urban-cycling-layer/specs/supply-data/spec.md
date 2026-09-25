@@ -2,7 +2,7 @@
 
 ### Requirement: Urban cycling dataset
 
-The data pipeline SHALL query the Overpass API for OpenStreetMap ways inside the Taipei City and New Taipei City administrative areas that are either tagged `highway=cycleway`, or tagged `highway` with any of `cycleway`, `cycleway:both`, `cycleway:left`, `cycleway:right` equal to `lane` or `track`. Ways that are members of a riverside route, as defined by the riverside station classification, SHALL be excluded. Ways tagged only as footways or sidewalks that permit bicycles SHALL NOT be included. The pipeline SHALL also query nodes tagged `highway=traffic_signals` or `highway=crossing` within 30 meters of the included ways. The query SHALL use the same Overpass instances, retry behaviour, and `User-Agent` header as the shop query.
+The data pipeline SHALL query the Overpass API for OpenStreetMap ways inside the Taipei City and New Taipei City administrative areas that are either tagged `highway=cycleway`, or tagged `highway` with any of `cycleway`, `cycleway:both`, `cycleway:left`, `cycleway:right` equal to `lane` or `track`. Ways that are members of a riverside route, as defined by the riverside station classification, SHALL be excluded. Ways whose `highway` tag is `footway`, `pedestrian`, `path`, `steps`, or `sidewalk` SHALL NOT be included, even when they permit bicycles or carry a `cycleway*` tag. The pipeline SHALL also query nodes tagged `highway=traffic_signals` or `highway=crossing` within 30 meters of the included ways. The query SHALL use the same Overpass instances, retry behaviour, and `User-Agent` header as the shop query.
 
 The pipeline SHALL write `public/data/cycling.json` as an object with two arrays:
 
