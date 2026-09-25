@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "nuxt dev",
     "generate": "nuxt generate",
-    "preview": "nuxt preview",
+    "preview": "rm -rf .preview && mkdir .preview && ln -s ../.output/public .preview/BikeSupplyMap && serve .preview --symlinks -l 3001",
     "postinstall": "nuxt prepare",
     "test": "vitest run",
     "fetch-data": "node scripts/fetch-data.js"
@@ -18,6 +18,7 @@
   "devDependencies": {
     "@types/leaflet": "^1.9.22",
     "@types/leaflet.markercluster": "^1.5.6",
+    "serve": "^14.2.6",
     "vitest": "^5.0.1"
   }
 }
