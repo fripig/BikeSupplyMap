@@ -1,4 +1,5 @@
 import { pointToSegmentMeters } from './riverside.js'
+import { joinLinesIndexed } from './routes.js'
 
 // Signals and crossings are kept only within this distance of an urban path.
 export const POINT_MAX_DISTANCE_METERS = 30
@@ -30,9 +31,11 @@ const byId = (a, b) => a.id - b.id
 const PREFILTER_DEGREES = 0.001
 
 // Builds cycling.json content from the urban cycling Overpass response. Ways in
-// riversideWayIds belong to riverside routes and are left out. Points farther
-// than 30 m from every published path are dropped, since the query's `around`
-// also covered the riverside ways.
+// riversideWayIds belong to riverside routes and are left out. Ways of the same
+// kind are joined where they meet end to end, and paths are sorted by the
+// smallest way id they contain. Points farther than 30 m from every published
+// path are dropped, since the query's `around` also covered the riverside ways.
+// `includedWays` is the way count before joining, for the publish guard.
 export function buildCyclingLayer(body, riversideWayIds) {
   const ways = body.elements
     .filter((e) => e.type === 'way' && e.geometry && !riversideWayIds.has(e.id))
@@ -59,11 +62,17 @@ export function buildCyclingLayer(body, riversideWayIds) {
     .filter(({ element, entry }) => entry && nearPath({ lat: element.lat, lng: element.lon }))
     .sort((a, b) => byId(a.element, b.element))
 
+  const paths = []
+  for (const kind of ['cycleway', 'lane']) {
+    const ofKind = ways.filter(({ entry }) => entry.kind === kind)
+    const joined = joinLinesIndexed(ofKind.map(({ element }) => element.geometry.map((g) => [round5(g.lat), round5(g.lon)])))
+    for (const { line, first } of joined) paths.push({ firstId: ofKind[first].element.id, path: { kind, coords: line } })
+  }
+  paths.sort((a, b) => a.firstId - b.firstId)
+
   return {
-    paths: ways.map(({ element, entry }) => ({
-      kind: entry.kind,
-      coords: element.geometry.map((g) => [round5(g.lat), round5(g.lon)]),
-    })),
+    includedWays: ways.length,
+    paths: paths.map(({ path }) => path),
     points: points.map(({ element, entry }) => ({ kind: entry.kind, lat: round5(element.lat), lng: round5(element.lon) })),
   }
 }

@@ -50,3 +50,15 @@ export function createCyclingLoader(fetchFn: Fetch, baseURL: string): () => Prom
     return pending
   }
 }
+
+export interface BikeRoute {
+  kind: 'riverside' | 'bridge'
+  name: string
+  lines: [number, number][][]
+}
+
+export interface RouteData {
+  routes: BikeRoute[]
+}
+
+export const loadRoutes = (fetchFn: Fetch, baseURL: string) => loadJson<RouteData>(fetchFn, baseURL, 'routes.json')

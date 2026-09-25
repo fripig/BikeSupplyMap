@@ -18,17 +18,22 @@ export interface CyclingToggle {
   show: Ref<boolean>
   data: ShallowRef<CyclingData | null>
   failed: Ref<boolean>
+  // Loads the data if the switch is on; the page calls it once mounted, so
+  // nothing is fetched while the page is pre-rendered.
+  start: () => Promise<void>
 }
 
-// The layer's switch state. Data is loaded the first time the switch is turned
-// on; on failure the switch goes back off with `failed` set, and turning it on
-// again retries.
+// The layer's switch state, on by default. Data is loaded by `start()` and then
+// whenever the switch is turned on without data; on failure the switch goes back
+// off with `failed` set, and turning it on again retries. A successful load is
+// never repeated.
 export function useCyclingToggle(load: () => Promise<CyclingData>): CyclingToggle {
-  const show = ref(false)
+  const show = ref(true)
   const data = shallowRef<CyclingData | null>(null)
   const failed = ref(false)
-  watch(show, async (on) => {
-    if (!on || data.value) return
+  let started = false
+  const ensureLoaded = async () => {
+    if (!show.value || data.value) return
     failed.value = false
     try {
       data.value = await load()
@@ -37,6 +42,13 @@ export function useCyclingToggle(load: () => Promise<CyclingData>): CyclingToggl
       failed.value = true
       show.value = false
     }
+  }
+  watch(show, () => {
+    if (started) ensureLoaded()
   })
-  return { show, data, failed }
+  const start = () => {
+    started = true
+    return ensureLoaded()
+  }
+  return { show, data, failed, start }
 }

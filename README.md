@@ -6,18 +6,24 @@
 
 ## 功能
 
+- 底圖使用 Esri 淡灰底圖，只留道路、河流與地名，讓自行車道成為主角。
+- 開啟時就畫出 21 條河濱自行車道（藍色）與 19 條可騎自行車過河的橋梁路線（紫色），點橋梁路線會顯示名稱。
 - 地圖預設只顯示河濱自行車道旁的 YouBike 2.0 站點（群組標記），開啟時自動框住這些站點。
 - 打開「顯示市區站點」可以加回其他營運中的站點，以灰色標記顯示；切換時已選的站點與店家清單會保留。
 - 點選站點後，列出 300 m／500 m／1 km 直線距離內的店家，由近到遠排序。
 - 可依店家類型（便利商店、超市、量販店、雜貨店）篩選。
 - 每家店都有「步行導航」連結，開啟 Google 地圖從站點走到店家的路線。
-- 打開「都市自行車道」圖層（預設關閉）可以看到市區的自行車道：實線是獨立自行車道，虛線是馬路上畫線的自行車道。放大到街道層級（zoom 16 以上）時，另外標出車道沿線 30 m 內的紅綠燈（紅點）與穿越道（白點）。圖層資料在第一次打開時才下載。
+- 「都市自行車道」圖層（預設開啟）以綠色顯示市區的自行車道：實線是獨立自行車道，虛線是馬路上畫線的自行車道。放大到街道層級（zoom 16 以上）時，另外標出車道沿線 30 m 內的紅綠燈（紅點）與穿越道（白點）。關掉開關只會隱藏都市車道，河濱與橋梁路線仍保留。
 
 距離是直線距離，實際步行距離會比較長。
 
 河濱站點的判定：建置時從 OpenStreetMap 抓雙北的河濱自行車道路線（`route=bicycle` relation，名稱含「河、溪、水岸、左岸、右岸」，另加關渡、社子島環島、二重環狀自行車道），站點距任一路線 200 m 以內就算河濱站點。規則在 `scripts/lib/riverside.js`。
 
 都市自行車道的範圍：OpenStreetMap 的獨立自行車道（`highway=cycleway`）與馬路上的自行車道（`cycleway`、`cycleway:both`、`cycleway:left`、`cycleway:right` 為 `lane` 或 `track`），扣掉屬於河濱路線的路段；人行道上的人車共道不列入。有號誌的穿越道算作紅綠燈。資料反映 OpenStreetMap 的標記，沒有標記的車道不會出現。規則在 `scripts/lib/cycling-layer.js`。
+
+橋梁路線：OpenStreetMap 上名稱含「橋」的 `route=bicycle` relation（已算河濱路線的除外），例如華江橋、福和橋、彩虹橋自行車道。
+
+連續路線：建置時把端點完全重合、且只有兩段在該點相接的路段串成一條線，遇到路口（三段以上相接）或斷點就停；不會補起斷點，也不會隱藏短段。規則在 `scripts/lib/routes.js`。
 
 ## 開發
 
@@ -32,7 +38,7 @@ npm run generate     # 產生靜態網站到 .output/public/
 npm run preview      # 預覽產生的靜態網站：http://localhost:3001/BikeSupplyMap/
 ```
 
-`npm run fetch-data` 任何一個來源失敗、回傳格式不對，或筆數少於下限（臺北、新北各 500 站，店家 2000 家，河濱路線 15 條，河濱站點 150 站，都市自行車道 1000 段，紅綠燈與穿越道 2000 個）時，會以非 0 結束，且不會覆蓋 `public/data/` 裡既有的檔案。
+`npm run fetch-data` 任何一個來源失敗、回傳格式不對，或筆數少於下限（臺北、新北各 500 站，店家 2000 家，河濱路線 15 條，河濱站點 150 站，橋梁路線 10 條，都市自行車道 1000 段（串接前），紅綠燈與穿越道 2000 個）時，會以非 0 結束，且不會覆蓋 `public/data/` 裡既有的檔案。
 
 ## 技術架構
 
@@ -49,7 +55,7 @@ npm run preview      # 預覽產生的靜態網站：http://localhost:3001/BikeS
 | 新北市 YouBike 2.0 站點 | [新北市政府資料開放平臺](https://data.ntpc.gov.tw/) | 政府資料開放授權條款－第 1 版 |
 | 店家 | © [OpenStreetMap 貢獻者](https://www.openstreetmap.org/copyright)，經 Overpass API 取得 | ODbL |
 | 河濱與都市自行車道、紅綠燈、穿越道 | © OpenStreetMap 貢獻者，經 Overpass API 取得 | ODbL |
-| 底圖 | © OpenStreetMap 貢獻者 | ODbL |
+| 底圖 | Esri World Light Gray Canvas（Esri, HERE, Garmin, © OpenStreetMap 貢獻者） | 依 Esri 條款，需標示來源 |
 
 店家類型先依品牌／名稱判斷，再依 OpenStreetMap 的 `shop` 標籤判斷；蝦皮店到店、百貨公司不列入。規則在 `scripts/lib/classify-shop.js`。
 

@@ -36,25 +36,35 @@ describe('cyclingDashArray', () => {
 })
 
 describe('useCyclingToggle', () => {
-  it('starts off and does not load until turned on', async () => {
+  it('starts on and loads once when started', async () => {
     const load = vi.fn(async () => layer)
     const toggle = useCyclingToggle(load)
+    expect(toggle.show.value).toBe(true)
     await flush()
-    expect(toggle.show.value).toBe(false)
     expect(load).not.toHaveBeenCalled()
-    toggle.show.value = true
-    await flush()
+    await toggle.start()
     expect(load).toHaveBeenCalledTimes(1)
     expect(toggle.data.value).toBe(layer)
   })
 
-  it('turns the switch back off with a failure flag, and retries on the next turn-on', async () => {
+  it('does not load on start when the switch was turned off first', async () => {
+    const load = vi.fn(async () => layer)
+    const toggle = useCyclingToggle(load)
+    toggle.show.value = false
+    await toggle.start()
+    expect(load).not.toHaveBeenCalled()
+    toggle.show.value = true
+    await flush()
+    expect(load).toHaveBeenCalledTimes(1)
+  })
+
+  it('turns the switch off with a failure flag on HTTP 404, and retries on the next turn-on', async () => {
     const load = vi.fn()
       .mockRejectedValueOnce(new Error('cycling.json: HTTP 404'))
       .mockResolvedValueOnce(layer)
     const toggle = useCyclingToggle(load)
     vi.spyOn(console, 'error').mockImplementation(() => {})
-    toggle.show.value = true
+    await toggle.start()
     await flush()
     expect(toggle.show.value).toBe(false)
     expect(toggle.failed.value).toBe(true)
@@ -70,8 +80,7 @@ describe('useCyclingToggle', () => {
   it('does not load again when turned off and on after a successful load', async () => {
     const load = vi.fn(async () => layer)
     const toggle = useCyclingToggle(load)
-    toggle.show.value = true
-    await flush()
+    await toggle.start()
     toggle.show.value = false
     await flush()
     toggle.show.value = true

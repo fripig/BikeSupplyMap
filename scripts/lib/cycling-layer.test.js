@@ -23,6 +23,22 @@ describe('classifyCyclingElement', () => {
 })
 
 describe('buildCyclingLayer', () => {
+  it('joins touching ways of the same kind and keeps different kinds apart', () => {
+    const body = {
+      elements: [
+        way(1, { highway: 'cycleway' }, [{ lat: 25.0, lon: 121.5 }, { lat: 25.0, lon: 121.501 }]),
+        way(2, { highway: 'cycleway' }, [{ lat: 25.0, lon: 121.502 }, { lat: 25.0, lon: 121.501 }]),
+        way(3, { highway: 'primary', cycleway: 'lane' }, [{ lat: 25.0, lon: 121.502 }, { lat: 25.0, lon: 121.503 }]),
+      ],
+    }
+    const { paths, includedWays } = buildCyclingLayer(body, new Set())
+    expect(includedWays).toBe(3)
+    expect(paths).toEqual([
+      { kind: 'cycleway', coords: [[25.0, 121.5], [25.0, 121.501], [25.0, 121.502]] },
+      { kind: 'lane', coords: [[25.0, 121.502], [25.0, 121.503]] },
+    ])
+  })
+
   it('excludes riverside route members and rounds coordinates to 5 decimals', () => {
     const body = {
       elements: [

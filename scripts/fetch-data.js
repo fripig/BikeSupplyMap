@@ -6,6 +6,7 @@ import { classifyShop } from './lib/classify-shop.js'
 import { normalizeNewTaipei, normalizeTaipei } from './lib/normalize-stations.js'
 import { buildCyclingLayer } from './lib/cycling-layer.js'
 import { classifyRiverside, riversideSegments } from './lib/riverside.js'
+import { buildRoutes } from './lib/routes.js'
 import { fetchAllPages } from './lib/paginate.js'
 
 // Source URLs and the output directory can be overridden by environment
@@ -32,7 +33,8 @@ ${OVERPASS_AREA}
 (nwr["shop"~"^(convenience|supermarket|wholesale|general|variety_store|greengrocer)$"](area.a););
 out center tags;`
 // Bicycle route relations with the geometry of their member ways; which of them
-// are riverside routes is decided in lib/riverside.js.
+// are riverside routes is decided in lib/riverside.js, and routes.json (riverside
+// and bridge routes) is built from the same response in lib/routes.js.
 const ROUTES_QUERY = `[out:json][timeout:170];
 ${OVERPASS_AREA}
 rel["route"="bicycle"](area.a)->.r;
@@ -133,8 +135,9 @@ async function fetchShops() {
   return body.elements.map(classifyShop).filter(Boolean)
 }
 
-async function fetchRiversideRoutes() {
-  return riversideSegments(await fetchOverpass(ROUTES_QUERY))
+async function fetchBikeRoutes() {
+  const body = await fetchOverpass(ROUTES_QUERY)
+  return { riverside: riversideSegments(body), ...buildRoutes(body) }
 }
 
 async function fetchCyclingLayer(riversideWayIds) {
@@ -146,10 +149,9 @@ const byId = (a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
 
 // One record per line keeps weekly data diffs reviewable.
 const toJsonLines = (items) => `[\n${items.map((i) => JSON.stringify(i)).join(',\n')}\n]\n`
-const cyclingJson = ({ paths, points }) => {
-  const lines = (items) => items.map((i) => JSON.stringify(i)).join(',\n')
-  return `{"paths":[\n${lines(paths)}\n],"points":[\n${lines(points)}\n]}\n`
-}
+const jsonLines = (items) => items.map((i) => JSON.stringify(i)).join(',\n')
+const cyclingJson = ({ paths, points }) => `{"paths":[\n${jsonLines(paths)}\n],"points":[\n${jsonLines(points)}\n]}\n`
+const routesJson = (routes) => `{"routes":[\n${jsonLines(routes)}\n]}\n`
 
 // Nothing is written until every source has succeeded and passed its count
 // check. The files are then written to a temp directory and renamed into place
@@ -170,13 +172,13 @@ async function main() {
   // The Overpass queries run one after the other so a public instance never
   // sees two heavy requests from us at once; the cycling layer also needs the
   // riverside route ways to leave them out.
-  const [taipei, newTaipei, [shops, riverside, cycling]] = await Promise.all([
+  const [taipei, newTaipei, [shops, { riverside, routes }, cycling]] = await Promise.all([
     fetchTaipeiStations(),
     fetchNewTaipeiStations(),
     (async () => {
       const shops = await fetchShops()
-      const riverside = await fetchRiversideRoutes()
-      return [shops, riverside, await fetchCyclingLayer(riverside.wayIds)]
+      const bikeRoutes = await fetchBikeRoutes()
+      return [shops, bikeRoutes, await fetchCyclingLayer(bikeRoutes.riverside.wayIds)]
     })(),
   ])
 
@@ -185,6 +187,7 @@ async function main() {
     riverside.segments,
   ).sort(byId)
   const riversideStations = stations.filter((s) => s.riverside).length
+  const bridgeRoutes = routes.filter((r) => r.kind === 'bridge').length
   const sortedShops = shops
     .map((s) => ({ ...s, lat: round6(s.lat), lng: round6(s.lng) }))
     .sort(byId)
@@ -199,6 +202,7 @@ async function main() {
       shops: shopCounts,
       cyclingPaths: cycling.paths.length,
       cyclingPoints: cycling.points.length,
+      bridgeRoutes,
     },
   }
 
@@ -208,8 +212,9 @@ async function main() {
     shops: sortedShops.length,
     riversideRoutes: riverside.routes.length,
     riversideStations,
-    cyclingPaths: cycling.paths.length,
+    cyclingPaths: cycling.includedWays,
     cyclingPoints: cycling.points.length,
+    bridgeRoutes,
   })
   if (problems.length) throw new Error(`refusing to publish incomplete data:\n  ${problems.join('\n  ')}`)
 
@@ -217,12 +222,14 @@ async function main() {
     'stations.json': toJsonLines(stations),
     'shops.json': toJsonLines(sortedShops),
     'cycling.json': cyclingJson(cycling),
+    'routes.json': routesJson(routes),
     'meta.json': `${JSON.stringify(meta, null, 2)}\n`,
   })
 
   console.log(`stations: 臺北市 ${taipei.length}, 新北市 ${newTaipei.length}`)
   console.log(`riverside: ${riverside.routes.length} routes, ${riversideStations} stations`)
-  console.log(`cycling: ${cycling.paths.length} paths, ${cycling.points.length} signals and crossings`)
+  console.log(`routes: ${routes.length - bridgeRoutes} riverside, ${bridgeRoutes} bridge`)
+  console.log(`cycling: ${cycling.includedWays} ways joined into ${cycling.paths.length} paths, ${cycling.points.length} signals and crossings`)
   console.log(`shops: ${Object.entries(shopCounts).map(([k, v]) => `${k} ${v}`).join(', ')}`)
 }
 

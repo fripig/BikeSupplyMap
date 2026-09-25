@@ -2,7 +2,7 @@
 import type { Circle, Control, LayerGroup, Map as LeafletMap, Marker, MarkerCluster, MarkerClusterGroup } from 'leaflet'
 import { splitStations, type NearbyShop, type Station } from '~/utils/geo'
 import { cyclingDashArray, cyclingVisibility } from '~/utils/cycling'
-import type { CyclingData } from '~/utils/load-data'
+import type { CyclingData, RouteData } from '~/utils/load-data'
 import { CATEGORY_COLORS, CATEGORY_LABELS } from '~/utils/categories'
 import { formatDistance } from '~/utils/format'
 import { directionsUrl } from '~/utils/links'
@@ -15,6 +15,7 @@ const props = defineProps<{
   showUrban: boolean
   showCycling: boolean
   cycling: CyclingData | null
+  routes: RouteData | null
 }>()
 
 const emit = defineEmits<{
@@ -28,10 +29,16 @@ let shopLayer: LayerGroup | undefined
 let selectedMarker: Marker | undefined
 let radiusCircle: Circle | undefined
 let urbanLayer: MarkerClusterGroup | undefined
+let bikeRenderer: import('leaflet').Canvas | undefined
+let routeLayer: LayerGroup | undefined
 let cyclingPaths: LayerGroup | undefined
 let cyclingPoints: LayerGroup | undefined
-let cyclingLegend: Control | undefined
+let legend: Control | undefined
+let legendEl: HTMLElement | undefined
 
+// Riverside and bridge routes are thick and always shown; urban paths are thin.
+const RIVERSIDE_COLOR = '#1971c2'
+const BRIDGE_COLOR = '#ae3ec9'
 const CYCLING_COLOR = '#2f9e44'
 
 // Shown when there are no riverside stations to frame.
@@ -47,10 +54,20 @@ onMounted(async () => {
   await import('leaflet.markercluster')
 
   map = L.map(container.value!)
-  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19,
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> 貢獻者',
+  // Esri World Light Gray: a pale base map without shop, bus or building icons,
+  // so the bike routes drawn on top stand out. Its labels sit in their own pane
+  // above the bike lines and below the markers, and never take clicks. Esri has
+  // no tiles past zoom 16 here, so higher zooms enlarge those.
+  const esri = 'https://server.arcgisonline.com/ArcGIS/rest/services/Canvas'
+  const tileOptions = { maxNativeZoom: 16, maxZoom: 19 }
+  L.tileLayer(`${esri}/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}`, {
+    ...tileOptions,
+    attribution: 'Esri, HERE, Garmin, &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> 貢獻者',
   }).addTo(map)
+  map.createPane('labels')
+  map.getPane('labels')!.style.zIndex = '450'
+  map.getPane('labels')!.style.pointerEvents = 'none'
+  L.tileLayer(`${esri}/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}`, { ...tileOptions, pane: 'labels' }).addTo(map)
 
   // Riverside stations are always shown; urban stations sit in their own muted
   // cluster group that the toggle adds or removes without touching the rest.
@@ -84,6 +101,7 @@ onMounted(async () => {
   map.on('zoomend', updateCyclingLayer)
 
   drawSelection()
+  drawRoutes()
   updateCyclingLayer()
 })
 
@@ -126,53 +144,95 @@ watch(() => props.nearby, drawSelection)
 // Builds the bike-path layers once, on the first time they are shown. One canvas
 // renderer draws every line and point, so thousands of them add no DOM nodes;
 // nothing on it is interactive, so station markers stay clickable.
+// One canvas renderer draws every bike line and point, so thousands of them add
+// no DOM nodes; it sits under the station markers, so stations stay clickable.
+const renderer = () => (bikeRenderer ??= L.canvas({ padding: 0.3 }))
+
+// Draws riverside and bridge routes once their data arrives. Each joined line is
+// one polyline; bridge lines open a popup with the route name.
+function drawRoutes() {
+  if (!map || routeLayer || !props.routes) return
+  routeLayer = L.layerGroup()
+  for (const route of props.routes.routes) {
+    const bridge = route.kind === 'bridge'
+    for (const line of route.lines) {
+      const polyline = L.polyline(line, {
+        renderer: renderer(), interactive: bridge, weight: 6, opacity: 0.9,
+        color: bridge ? BRIDGE_COLOR : RIVERSIDE_COLOR,
+      })
+      if (bridge) polyline.bindPopup(escapeHtml(route.name))
+      polyline.addTo(routeLayer)
+    }
+  }
+  // Routes go under the urban paths so the thin green lines stay visible.
+  map.addLayer(routeLayer)
+  if (cyclingPaths && map.hasLayer(cyclingPaths)) {
+    map.removeLayer(cyclingPaths)
+    map.addLayer(cyclingPaths)
+  }
+  updateLegend()
+}
+
 function buildCyclingLayers(data: CyclingData) {
-  const renderer = L.canvas({ padding: 0.3 })
   cyclingPaths = L.layerGroup()
   for (const path of data.paths) {
     L.polyline(path.coords, {
-      renderer, interactive: false, color: CYCLING_COLOR, weight: 3, opacity: 0.85,
+      renderer: renderer(), interactive: false, color: CYCLING_COLOR, weight: 3, opacity: 0.85,
       dashArray: cyclingDashArray(path.kind),
     }).addTo(cyclingPaths)
   }
   cyclingPoints = L.layerGroup()
   for (const point of data.points) {
     L.circleMarker([point.lat, point.lng], point.kind === 'signal'
-      ? { renderer, interactive: false, radius: 4, weight: 1, color: '#fff', fillColor: '#e03131', fillOpacity: 1 }
-      : { renderer, interactive: false, radius: 4, weight: 2, color: '#343a40', fillColor: '#fff', fillOpacity: 1 },
+      ? { renderer: renderer(), interactive: false, radius: 4, weight: 1, color: '#fff', fillColor: '#e03131', fillOpacity: 1 }
+      : { renderer: renderer(), interactive: false, radius: 4, weight: 2, color: '#343a40', fillColor: '#fff', fillOpacity: 1 },
     ).addTo(cyclingPoints)
-  }
-  cyclingLegend = new L.Control({ position: 'bottomleft' })
-  cyclingLegend.onAdd = () => {
-    const el = L.DomUtil.create('div', 'cycling-legend')
-    el.innerHTML = '<span><i class="cycling-legend__line"></i>自行車道</span>'
-      + '<span><i class="cycling-legend__line cycling-legend__line--lane"></i>自行車道（畫線）</span>'
-      + '<span><i class="cycling-legend__dot cycling-legend__dot--signal"></i>紅綠燈</span>'
-      + '<span><i class="cycling-legend__dot cycling-legend__dot--crossing"></i>穿越道</span>'
-    return el
   }
 }
 
-// Shows or hides lines, legend and (at street-level zoom) points to match the
+// The legend lists route entries while routes are drawn and urban entries while
+// the urban layer is on; it is hidden when neither is shown.
+function updateLegend() {
+  if (!map) return
+  const entries: string[] = []
+  if (routeLayer) {
+    entries.push('<span><i class="cycling-legend__line cycling-legend__line--riverside"></i>河濱自行車道</span>')
+    entries.push('<span><i class="cycling-legend__line cycling-legend__line--bridge"></i>橋梁自行車道</span>')
+  }
+  if (cyclingPaths && map.hasLayer(cyclingPaths)) {
+    entries.push('<span><i class="cycling-legend__line"></i>自行車道</span>')
+    entries.push('<span><i class="cycling-legend__line cycling-legend__line--lane"></i>自行車道（畫線）</span>')
+    entries.push('<span><i class="cycling-legend__dot cycling-legend__dot--signal"></i>紅綠燈</span>')
+    entries.push('<span><i class="cycling-legend__dot cycling-legend__dot--crossing"></i>穿越道</span>')
+  }
+  if (!legend) {
+    legend = new L.Control({ position: 'bottomleft' })
+    legend.onAdd = () => (legendEl = L.DomUtil.create('div', 'cycling-legend'))
+  }
+  if (!entries.length) {
+    legend.remove()
+    return
+  }
+  if (!legendEl?.isConnected) legend.addTo(map)
+  legendEl!.innerHTML = entries.join('')
+}
+
+// Shows or hides urban lines and (at street-level zoom) points to match the
 // switch, the loaded data and the current zoom.
 function updateCyclingLayer() {
   if (!map) return
   const { paths: on, points: showPoints } = cyclingVisibility(props.showCycling, props.cycling !== null, map.getZoom())
   if (on && !cyclingPaths) buildCyclingLayers(props.cycling!)
-  if (!cyclingPaths || !cyclingPoints || !cyclingLegend) return
-  if (on) {
-    if (!map.hasLayer(cyclingPaths)) {
-      map.addLayer(cyclingPaths)
-      cyclingLegend.addTo(map)
-    }
-  } else if (map.hasLayer(cyclingPaths)) {
-    map.removeLayer(cyclingPaths)
-    cyclingLegend.remove()
+  if (cyclingPaths && cyclingPoints) {
+    if (on && !map.hasLayer(cyclingPaths)) map.addLayer(cyclingPaths)
+    if (!on && map.hasLayer(cyclingPaths)) map.removeLayer(cyclingPaths)
+    if (showPoints && !map.hasLayer(cyclingPoints)) map.addLayer(cyclingPoints)
+    if (!showPoints && map.hasLayer(cyclingPoints)) map.removeLayer(cyclingPoints)
   }
-  if (showPoints && !map.hasLayer(cyclingPoints)) map.addLayer(cyclingPoints)
-  if (!showPoints && map.hasLayer(cyclingPoints)) map.removeLayer(cyclingPoints)
+  updateLegend()
 }
 
+watch(() => props.routes, drawRoutes)
 watch(() => [props.showCycling, props.cycling] as const, updateCyclingLayer)
 watch(() => props.showUrban, (show) => {
   if (!map || !urbanLayer) return
@@ -229,6 +289,13 @@ watch(() => [props.selected, props.radius] as const, () => {
   line-height: 1.3;
 }
 
+/* On phones the attribution wraps under the legend; keep the legend above it. */
+@media (max-width: 767px) {
+  .cycling-legend {
+    margin-bottom: 1.6rem !important;
+  }
+}
+
 .cycling-legend span {
   display: flex;
   align-items: center;
@@ -238,6 +305,14 @@ watch(() => [props.selected, props.radius] as const, () => {
 .cycling-legend__line {
   width: 20px;
   border-top: 3px solid #2f9e44;
+}
+
+.cycling-legend__line--riverside {
+  border-top: 5px solid #1971c2;
+}
+
+.cycling-legend__line--bridge {
+  border-top: 5px solid #ae3ec9;
 }
 
 .cycling-legend__line--lane {

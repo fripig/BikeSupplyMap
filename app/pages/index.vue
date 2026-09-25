@@ -3,7 +3,7 @@ import { nearbyShops, type Category, type Shop, type Station } from '~/utils/geo
 import { CATEGORIES, DEFAULT_RADIUS } from '~/utils/categories'
 import { formatDataDate } from '~/utils/format'
 import { useCyclingToggle } from '~/utils/cycling'
-import { createCyclingLoader, loadJson, loadSupplyData } from '~/utils/load-data'
+import { createCyclingLoader, loadJson, loadRoutes, loadSupplyData, type RouteData } from '~/utils/load-data'
 
 const { app } = useRuntimeConfig()
 
@@ -19,14 +19,28 @@ const showUrban = ref(false)
 const {
   show: showCycling,
   data: cycling,
-  failed: cyclingFailed,
+  failed: urbanFailed,
+  start: startCycling,
 } = useCyclingToggle(createCyclingLoader(fetch, app.baseURL))
+const routes = shallowRef<RouteData | null>(null)
+const routesFailed = ref(false)
+const cyclingFailed = computed(() => urbanFailed.value || routesFailed.value)
 
 const nearby = computed(() =>
   selected.value ? nearbyShops(selected.value, shops.value, radius.value, enabledCategories.value) : [],
 )
 
 onMounted(async () => {
+  // Bike routes and the urban layer load alongside stations; a failure shows a
+  // message in the controls and leaves the rest of the map working.
+  loadRoutes(fetch, app.baseURL)
+    .then((data) => { routes.value = data })
+    .catch((err) => {
+      console.error(err)
+      routesFailed.value = true
+    })
+  startCycling()
+
   // The data date is informative only; the map works without it.
   loadJson<{ generatedAt: string }>(fetch, app.baseURL, 'meta.json')
     .then((meta) => { dataDate.value = formatDataDate(meta.generatedAt) })
@@ -97,6 +111,7 @@ watch(selected, async () => {
           :show-urban="showUrban"
           :show-cycling="showCycling"
           :cycling="cycling"
+          :routes="routes"
           @select="selected = $event"
         />
       </ClientOnly>

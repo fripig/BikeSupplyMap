@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { createCyclingLoader, loadSupplyData } from './load-data'
+import { createCyclingLoader, loadRoutes, loadSupplyData } from './load-data'
 
 const ok = (body: unknown) => ({ ok: true, status: 200, json: async () => body })
 const notFound = { ok: false, status: 404, json: async () => ({}) }
@@ -54,5 +54,18 @@ describe('createCyclingLoader', () => {
     await expect(load()).rejects.toThrow('cycling.json: HTTP 404')
     await expect(load()).resolves.toEqual(layer)
     expect(fetchFn).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('loadRoutes', () => {
+  it('loads routes.json under the base URL', async () => {
+    const body = { routes: [{ kind: 'bridge', name: '華江橋自行車道', lines: [] }] }
+    const fetchFn = vi.fn(async () => ok(body))
+    await expect(loadRoutes(fetchFn, '/BikeSupplyMap/')).resolves.toEqual(body)
+    expect(fetchFn.mock.calls).toEqual([['/BikeSupplyMap/data/routes.json']])
+  })
+
+  it('rejects on HTTP 404', async () => {
+    await expect(loadRoutes(vi.fn(async () => notFound), '/BikeSupplyMap/')).rejects.toThrow('routes.json: HTTP 404')
   })
 })

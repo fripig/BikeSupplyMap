@@ -25,11 +25,16 @@ const overpassBody = (n) => ({
 
 // Riverside routes whose single way runs through the fake Taipei stations at
 // (25.03, 121.54), so every Taipei station is riverside and no New Taipei one is.
-const routesBody = (n) => ({
+// ...plus `bridges` bridge routes over way 2, far from every station.
+const routesBody = (n, bridges = 19) => ({
   elements: [
     { type: 'way', id: 1, geometry: [{ lat: 25.03, lon: 121.53 }, { lat: 25.03, lon: 121.55 }] },
+    { type: 'way', id: 2, geometry: [{ lat: 24.9, lon: 121.4 }, { lat: 24.901, lon: 121.4 }] },
     ...Array.from({ length: n }, (_, i) => ({
       type: 'relation', id: i + 1, tags: { route: 'bicycle', name: `測試河${i}自行車道` }, members: [{ type: 'way', ref: 1 }],
+    })),
+    ...Array.from({ length: bridges }, (_, i) => ({
+      type: 'relation', id: 100 + i, tags: { route: 'bicycle', name: `測試${i}橋自行車道` }, members: [{ type: 'way', ref: 2 }],
     })),
   ],
 })
@@ -77,6 +82,7 @@ const SEED = {
   'stations.json': '[\n{"id":"old"}\n]\n',
   'shops.json': '[\n{"id":"n0"}\n]\n',
   'cycling.json': '{"paths":[],"points":[]}\n',
+  'routes.json': '{"routes":[]}\n',
   'meta.json': '{"generatedAt":"2026-01-01T00:00:00.000Z"}\n',
 }
 
@@ -160,7 +166,7 @@ describe('fetch-data', () => {
   it('writes the urban cycling layer and reports its counts', async () => {
     const { code, stdout } = await run()
     expect(code).toBe(0)
-    expect(stdout).toContain('cycling: 1000 paths, 2000 signals and crossings')
+    expect(stdout).toContain('cycling: 1000 ways joined into 1000 paths, 2000 signals and crossings')
     const data = await readData()
     const cycling = JSON.parse(data['cycling.json'])
     expect(cycling.paths).toHaveLength(1000)
@@ -169,6 +175,27 @@ describe('fetch-data', () => {
     expect(data['cycling.json'].split('\n')[1]).toBe(JSON.stringify(cycling.paths[0]) + ',')
     const { counts } = JSON.parse(data['meta.json'])
     expect([counts.cyclingPaths, counts.cyclingPoints]).toEqual([1000, 2000])
+  })
+
+  it('writes riverside and bridge routes and reports the bridge count', async () => {
+    const { code, stdout } = await run()
+    expect(code).toBe(0)
+    expect(stdout).toContain('routes: 21 riverside, 19 bridge')
+    const data = await readData()
+    const { routes } = JSON.parse(data['routes.json'])
+    expect(routes).toHaveLength(40)
+    expect(routes[0]).toEqual({ kind: 'riverside', name: '測試河0自行車道', lines: [[[25.03, 121.53], [25.03, 121.55]]] })
+    expect(routes[21]).toEqual({ kind: 'bridge', name: '測試0橋自行車道', lines: [[[24.9, 121.4], [24.901, 121.4]]] })
+    expect(data['routes.json'].split('\n')[1]).toBe(JSON.stringify(routes[0]) + ',')
+    expect(JSON.parse(data['meta.json']).counts.bridgeRoutes).toBe(19)
+  })
+
+  it('rejects too few bridge routes and keeps previous data', async () => {
+    responses['/routes'] = () => [200, routesBody(21, 6)]
+    const { code, stderr } = await run()
+    expect(code).not.toBe(0)
+    expect(stderr).toContain('bridge bike routes: got 6, expected at least 10')
+    expect(await readData()).toEqual(SEED)
   })
 
   it('rejects too few urban cycling paths and keeps previous data', async () => {
