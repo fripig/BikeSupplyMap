@@ -1,5 +1,5 @@
 import { ref, shallowRef, watch, type Ref, type ShallowRef } from 'vue'
-import type { CyclingData, CyclingPath } from './load-data'
+import type { CyclingData, CyclingPath, RouteData } from './load-data'
 
 // Signals and crossings only mean something at street level.
 export const CYCLING_POINTS_MIN_ZOOM = 16
@@ -51,4 +51,43 @@ export function useCyclingToggle(load: () => Promise<CyclingData>): CyclingToggl
     return ensureLoaded()
   }
   return { show, data, failed, start }
+}
+
+export interface LegendEntry {
+  label: string
+  // CSS modifier after `cycling-legend__`, naming the line or dot style.
+  icon: string
+}
+
+// Legend entries: route lines whenever routes are drawn, urban lines and the
+// signal and crossing dots while the urban layer is on.
+export function legendEntries(routesShown: boolean, urbanShown: boolean): LegendEntry[] {
+  const entries: LegendEntry[] = []
+  if (routesShown) {
+    entries.push({ label: '河濱自行車道', icon: 'line cycling-legend__line--riverside' })
+    entries.push({ label: '橋梁自行車道', icon: 'line cycling-legend__line--bridge' })
+  }
+  if (urbanShown) {
+    entries.push({ label: '自行車道', icon: 'line' })
+    entries.push({ label: '自行車道（畫線）', icon: 'line cycling-legend__line--lane' })
+    entries.push({ label: '紅綠燈', icon: 'dot cycling-legend__dot--signal' })
+    entries.push({ label: '穿越道', icon: 'dot cycling-legend__dot--crossing' })
+  }
+  return entries
+}
+
+// Riverside and bridge routes, loaded once by `start()` after the page mounts.
+// A failure sets `failed` and leaves `data` empty; there is no retry.
+export function useRouteData(load: () => Promise<RouteData>) {
+  const data = shallowRef<RouteData | null>(null)
+  const failed = ref(false)
+  const start = async () => {
+    try {
+      data.value = await load()
+    } catch (err) {
+      console.error(err)
+      failed.value = true
+    }
+  }
+  return { data, failed, start }
 }

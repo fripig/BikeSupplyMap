@@ -2,8 +2,8 @@
 import { nearbyShops, type Category, type Shop, type Station } from '~/utils/geo'
 import { CATEGORIES, DEFAULT_RADIUS } from '~/utils/categories'
 import { formatDataDate } from '~/utils/format'
-import { useCyclingToggle } from '~/utils/cycling'
-import { createCyclingLoader, loadJson, loadRoutes, loadSupplyData, type RouteData } from '~/utils/load-data'
+import { useCyclingToggle, useRouteData } from '~/utils/cycling'
+import { createCyclingLoader, loadJson, loadRoutes, loadSupplyData } from '~/utils/load-data'
 
 const { app } = useRuntimeConfig()
 
@@ -22,8 +22,7 @@ const {
   failed: urbanFailed,
   start: startCycling,
 } = useCyclingToggle(createCyclingLoader(fetch, app.baseURL))
-const routes = shallowRef<RouteData | null>(null)
-const routesFailed = ref(false)
+const { data: routes, failed: routesFailed, start: startRoutes } = useRouteData(() => loadRoutes(fetch, app.baseURL))
 const cyclingFailed = computed(() => urbanFailed.value || routesFailed.value)
 
 const nearby = computed(() =>
@@ -33,12 +32,7 @@ const nearby = computed(() =>
 onMounted(async () => {
   // Bike routes and the urban layer load alongside stations; a failure shows a
   // message in the controls and leaves the rest of the map working.
-  loadRoutes(fetch, app.baseURL)
-    .then((data) => { routes.value = data })
-    .catch((err) => {
-      console.error(err)
-      routesFailed.value = true
-    })
+  startRoutes()
   startCycling()
 
   // The data date is informative only; the map works without it.

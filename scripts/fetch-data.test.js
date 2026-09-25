@@ -198,6 +198,25 @@ describe('fetch-data', () => {
     expect(await readData()).toEqual(SEED)
   })
 
+  it('guards on ways before joining but reports joined lines in meta.json', async () => {
+    // 1000 ways in touching pairs: each pair shares an end point and joins into one line.
+    const body = cyclingBody(1000, 2000)
+    for (const w of body.elements.filter((e) => e.type === 'way')) {
+      const i = w.id - 1000
+      const x = 121.0 + Math.floor(i / 2) * 0.002
+      w.geometry = i % 2 === 0
+        ? [{ lat: 25.2, lon: x }, { lat: 25.2, lon: x + 0.0005 }]
+        : [{ lat: 25.2, lon: x + 0.0005 }, { lat: 25.2, lon: x + 0.001 }]
+    }
+    responses['/cycling'] = () => [200, body]
+    const { code, stdout } = await run()
+    expect(code).toBe(0)
+    expect(stdout).toContain('cycling: 1000 ways joined into 500 paths')
+    const data = await readData()
+    expect(JSON.parse(data['cycling.json']).paths[0]).toEqual({ kind: 'cycleway', coords: [[25.2, 121.0], [25.2, 121.0005], [25.2, 121.001]] })
+    expect(JSON.parse(data['meta.json']).counts.cyclingPaths).toBe(500)
+  })
+
   it('rejects too few urban cycling paths and keeps previous data', async () => {
     responses['/cycling'] = () => [200, cyclingBody(300, 2000)]
     const { code, stderr } = await run()

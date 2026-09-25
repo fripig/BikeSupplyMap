@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { Circle, Control, LayerGroup, Map as LeafletMap, Marker, MarkerCluster, MarkerClusterGroup } from 'leaflet'
 import { splitStations, type NearbyShop, type Station } from '~/utils/geo'
-import { cyclingDashArray, cyclingVisibility } from '~/utils/cycling'
+import { cyclingDashArray, cyclingVisibility, legendEntries } from '~/utils/cycling'
 import type { CyclingData, RouteData } from '~/utils/load-data'
 import { CATEGORY_COLORS, CATEGORY_LABELS } from '~/utils/categories'
 import { formatDistance } from '~/utils/format'
@@ -141,9 +141,6 @@ function drawSelection() {
 // drives the redraw. Picking a station or changing the radius also refits the
 // view; flush: 'post' lets the redraw above create the new circle first.
 watch(() => props.nearby, drawSelection)
-// Builds the bike-path layers once, on the first time they are shown. One canvas
-// renderer draws every line and point, so thousands of them add no DOM nodes;
-// nothing on it is interactive, so station markers stay clickable.
 // One canvas renderer draws every bike line and point, so thousands of them add
 // no DOM nodes; it sits under the station markers, so stations stay clickable.
 const renderer = () => (bikeRenderer ??= L.canvas({ padding: 0.3 }))
@@ -194,17 +191,8 @@ function buildCyclingLayers(data: CyclingData) {
 // the urban layer is on; it is hidden when neither is shown.
 function updateLegend() {
   if (!map) return
-  const entries: string[] = []
-  if (routeLayer) {
-    entries.push('<span><i class="cycling-legend__line cycling-legend__line--riverside"></i>河濱自行車道</span>')
-    entries.push('<span><i class="cycling-legend__line cycling-legend__line--bridge"></i>橋梁自行車道</span>')
-  }
-  if (cyclingPaths && map.hasLayer(cyclingPaths)) {
-    entries.push('<span><i class="cycling-legend__line"></i>自行車道</span>')
-    entries.push('<span><i class="cycling-legend__line cycling-legend__line--lane"></i>自行車道（畫線）</span>')
-    entries.push('<span><i class="cycling-legend__dot cycling-legend__dot--signal"></i>紅綠燈</span>')
-    entries.push('<span><i class="cycling-legend__dot cycling-legend__dot--crossing"></i>穿越道</span>')
-  }
+  const entries = legendEntries(!!routeLayer, !!cyclingPaths && map.hasLayer(cyclingPaths))
+    .map(({ label, icon }) => `<span><i class="cycling-legend__${icon}"></i>${label}</span>`)
   if (!legend) {
     legend = new L.Control({ position: 'bottomleft' })
     legend.onAdd = () => (legendEl = L.DomUtil.create('div', 'cycling-legend'))

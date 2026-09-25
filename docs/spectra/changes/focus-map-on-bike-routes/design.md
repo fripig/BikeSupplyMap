@@ -52,7 +52,7 @@ One canvas renderer draws all bike lines under the station markers:
 | Layer | Color | Weight | Dash | Interactive |
 | ----- | ----- | ------ | ---- | ----------- |
 | 河濱自行車道 | `#1971c2` | 6 | solid | no |
-| 橋梁自行車道 | `#ae3ec9` | 6 | solid | yes, click shows name tooltip |
+| 橋梁自行車道 | `#ae3ec9` | 6 | solid | yes, click opens a popup with the name |
 | 自行車道 | `#2f9e44` | 3 | solid | no |
 | 自行車道（畫線） | `#2f9e44` | 3 | `6 5` | no |
 

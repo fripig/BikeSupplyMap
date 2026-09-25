@@ -1,6 +1,6 @@
 import { nextTick } from 'vue'
 import { describe, expect, it, vi } from 'vitest'
-import { cyclingDashArray, cyclingVisibility, useCyclingToggle } from './cycling'
+import { cyclingDashArray, cyclingVisibility, legendEntries, useCyclingToggle, useRouteData } from './cycling'
 
 const layer = { paths: [], points: [] }
 const flush = async () => {
@@ -86,5 +86,37 @@ describe('useCyclingToggle', () => {
     toggle.show.value = true
     await flush()
     expect(load).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('legendEntries', () => {
+  const labels = (routes: boolean, urban: boolean) => legendEntries(routes, urban).map((e) => e.label)
+
+  it.each([
+    [true, true, ['河濱自行車道', '橋梁自行車道', '自行車道', '自行車道（畫線）', '紅綠燈', '穿越道']],
+    [true, false, ['河濱自行車道', '橋梁自行車道']],
+    [false, true, ['自行車道', '自行車道（畫線）', '紅綠燈', '穿越道']],
+    [false, false, []],
+  ])('routes drawn=%s, urban on=%s', (routes, urban, expected) => {
+    expect(labels(routes, urban)).toEqual(expected)
+  })
+})
+
+describe('useRouteData', () => {
+  it('loads the routes when started', async () => {
+    const data = { routes: [] }
+    const routes = useRouteData(vi.fn(async () => data))
+    expect(routes.data.value).toBeNull()
+    await routes.start()
+    expect(routes.data.value).toBe(data)
+    expect(routes.failed.value).toBe(false)
+  })
+
+  it('sets the failure flag and draws nothing on HTTP 404', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const routes = useRouteData(vi.fn(async () => { throw new Error('routes.json: HTTP 404') }))
+    await routes.start()
+    expect(routes.failed.value).toBe(true)
+    expect(routes.data.value).toBeNull()
   })
 })
