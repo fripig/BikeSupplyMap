@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { buildRoutes, joinLines } from './routes.js'
+import { BRIDGE_SUPPLEMENTS, supplementClauses } from './bridge-supplements.js'
+import { buildRoutes, joinLines, routeVending } from './routes.js'
 
 const P1 = [25.0, 121.5]
 const P2 = [25.0, 121.501]
@@ -69,5 +70,78 @@ describe('buildRoutes', () => {
   it('leaves out routes whose member ways have no geometry, and nameless relations', () => {
     const { routes } = buildRoutes({ elements: [rel(1, '福和橋自行車道', [99]), rel(2, null, [10]), way(10, [[25, 121.5], [25, 121.501]])] })
     expect(routes).toEqual([])
+  })
+})
+
+describe('buildRoutes supplementary bridges', () => {
+  const tagged = (id, tags, geometry) => ({ type: 'way', id, tags, geometry: geometry.map(([lat, lon]) => ({ lat, lon })) })
+  const ENTRY = { name: '重陽橋', highway: 'secondary', label: '重陽橋（人行道）' }
+
+  it('lists 重陽橋 as the first supplementary bridge', () => {
+    expect(BRIDGE_SUPPLEMENTS[0]).toEqual(ENTRY)
+  })
+
+  it.each([
+    [{ name: '重陽橋', highway: 'secondary', bridge: 'yes' }, true],
+    [{ name: '重陽橋', highway: 'service', bridge: 'yes', motorcycle: 'designated' }, false],
+    [{ name: '重陽橋', highway: 'secondary' }, false],
+    [{ name: '重陽陸橋', highway: 'footway', bridge: 'yes' }, false],
+  ])('%o selected: %s', (tags, selected) => {
+    const selector = tagged(1, { name: '重陽橋', highway: 'secondary', bridge: 'yes' }, [[25.06, 121.49], [25.061, 121.49]])
+    const candidate = tagged(2, tags, [[25.07, 121.5], [25.071, 121.5]])
+    const { routes } = buildRoutes({ elements: [selector, candidate] }, [ENTRY])
+    expect(routes).toHaveLength(1)
+    expect(routes[0].lines.some((l) => l[0][0] === 25.07)).toBe(selected)
+  })
+
+  it('joins the selected ways into one bridge route after the relation routes', () => {
+    const rel = { type: 'relation', id: 1, tags: { route: 'bicycle', name: '華江橋自行車道' }, members: [{ type: 'way', ref: 10 }] }
+    const { routes, missingSupplements } = buildRoutes({
+      elements: [
+        rel,
+        tagged(10, {}, [[25.03, 121.49], [25.031, 121.491]]),
+        tagged(21, { name: '重陽橋', highway: 'secondary', bridge: 'yes' }, [[25.06, 121.491], [25.06, 121.492]]),
+        tagged(20, { name: '重陽橋', highway: 'secondary', bridge: 'yes' }, [[25.06, 121.49], [25.06, 121.491]]),
+      ],
+    }, [ENTRY])
+    expect(missingSupplements).toEqual([])
+    expect(routes).toEqual([
+      { kind: 'bridge', name: '華江橋自行車道', lines: [[[25.03, 121.49], [25.031, 121.491]]] },
+      { kind: 'bridge', name: '重陽橋（人行道）', lines: [[[25.06, 121.49], [25.06, 121.491], [25.06, 121.492]]] },
+    ])
+  })
+
+  it('reports an entry that selects no way', () => {
+    const { routes, missingSupplements } = buildRoutes({ elements: [tagged(1, { name: '重陽橋', highway: 'service', bridge: 'yes' }, [[25.06, 121.49], [25.06, 121.491]])] }, [ENTRY])
+    expect(routes).toEqual([])
+    expect(missingSupplements).toEqual(['重陽橋'])
+  })
+
+  it('builds one Overpass clause per entry', () => {
+    expect(supplementClauses([ENTRY])).toBe('way["name"="重陽橋"]["highway"="secondary"]["bridge"="yes"](area.a);')
+  })
+})
+
+describe('routeVending', () => {
+  // A line along lat 25.0; 0.001° of latitude is about 111 m.
+  const routes = [{ kind: 'riverside', name: '淡水河左岸自行車道', lines: [[[25.0, 121.5], [25.0, 121.51]]] }]
+  const vending = (id, lat, extra = {}) => ({ id, name: null, category: 'vending', lat, lng: 121.505, vending: 'drinks', ...extra })
+
+  it('keeps vending machines within 200 m of a route line and drops farther ones', () => {
+    const near = vending('n2', 25.00135) // about 150 m
+    const far = vending('n1', 25.00225) // about 250 m
+    expect(routeVending(routes, [far, near])).toEqual([{ name: null, vending: 'drinks', lat: 25.00135, lng: 121.505 }])
+  })
+
+  it('ignores other categories and sorts by shop id', () => {
+    const shops = [
+      vending('n9', 25.0, { name: '黑松販賣機', vending: 'coffee;food' }),
+      { id: 'n5', name: '7-ELEVEN', category: 'convenience', lat: 25.0, lng: 121.505 },
+      vending('n10', 25.0, { vending: undefined }),
+    ]
+    expect(routeVending(routes, shops)).toEqual([
+      { name: null, vending: null, lat: 25.0, lng: 121.505 },
+      { name: '黑松販賣機', vending: 'coffee;food', lat: 25.0, lng: 121.505 },
+    ])
   })
 })

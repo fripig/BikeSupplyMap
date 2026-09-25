@@ -2,6 +2,14 @@
 // "OK mart" / "OKmart" and "7-Eleven" / "7-ELEVEN" are treated alike.
 const EXCLUDED = ['蝦皮']
 
+// Vending machines count when any `;`-separated value of their `vending` tag is
+// food or drink, or when the tag is missing (mappers often leave drink machines
+// untagged).
+const VENDING_FOOD = new Set(['drinks', 'water', 'coffee', 'food', 'ice_cream', 'sweets', 'bread', 'milk', 'snacks', 'beverages'])
+
+const isFoodVending = (vending) =>
+  vending == null || vending.split(';').some((v) => VENDING_FOOD.has(v.trim()))
+
 const HYPERMARKET = ['家樂福', '好市多', 'costco', '大潤發', '愛買']
 const HYPERMARKET_EXCEPT = ['超市', 'market']
 
@@ -39,9 +47,15 @@ export function classifyShop(element) {
 
   if (containsAny(allText, EXCLUDED)) return null
 
-  const category = categoryFromText(brand, allText)
-    ?? categoryFromText(name, allText)
-    ?? SHOP_TAG_FALLBACK[tags.shop]
+  // Vending machines never fall through to brand rules, so a 7-Eleven machine
+  // is not counted as a convenience store.
+  const isVending = tags.amenity === 'vending_machine'
+  if (isVending && !isFoodVending(tags.vending)) return null
+
+  const category = isVending ? 'vending'
+    : categoryFromText(brand, allText)
+      ?? categoryFromText(name, allText)
+      ?? SHOP_TAG_FALLBACK[tags.shop]
   if (!category) return null
 
   const lat = element.lat ?? element.center?.lat
@@ -54,5 +68,7 @@ export function classifyShop(element) {
     category,
     lat,
     lng,
+    // Kept for the route-side vending popup; not published in shops.json.
+    ...(isVending ? { vending: tags.vending ?? null } : {}),
   }
 }

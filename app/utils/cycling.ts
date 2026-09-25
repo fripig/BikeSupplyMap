@@ -59,13 +59,29 @@ export interface LegendEntry {
   icon: string
 }
 
-// Legend entries: route lines whenever routes are drawn, urban lines and the
-// signal and crossing dots while the urban layer is on.
-export function legendEntries(routesShown: boolean, urbanShown: boolean): LegendEntry[] {
+// Popup text for a route-side vending machine: its name or 自動販賣機, then the
+// food and drink types from its OSM `vending` value, deduplicated in first-seen
+// order. Values that are not food or drink are left out.
+const VENDING_TYPES: Record<string, string> = {
+  drinks: '飲料', beverages: '飲料', water: '飲水', coffee: '咖啡',
+  food: '食物', ice_cream: '食物', sweets: '食物', bread: '食物', milk: '食物', snacks: '食物',
+}
+
+export function vendingLabel(name: string | null, vending: string | null): string {
+  const types = [...new Set((vending ?? '').split(';').map((v) => VENDING_TYPES[v.trim()]).filter(Boolean))]
+  const label = name ?? '自動販賣機'
+  return types.length ? `${label} · ${types.join('、')}` : label
+}
+
+// Legend entries: route lines whenever routes are drawn, route-side vending
+// while routes are drawn and the 自動販賣機 category is on, and urban lines and
+// the signal and crossing dots while the urban layer is on.
+export function legendEntries(routesShown: boolean, urbanShown: boolean, vendingShown: boolean): LegendEntry[] {
   const entries: LegendEntry[] = []
   if (routesShown) {
     entries.push({ label: '河濱自行車道', icon: 'line cycling-legend__line--riverside' })
     entries.push({ label: '橋梁自行車道', icon: 'line cycling-legend__line--bridge' })
+    if (vendingShown) entries.push({ label: '自動販賣機', icon: 'dot cycling-legend__dot--vending' })
   }
   if (urbanShown) {
     entries.push({ label: '自行車道', icon: 'line' })

@@ -1,4 +1,5 @@
-import { isRiversideRoute } from './riverside.js'
+import { selectsWay } from './bridge-supplements.js'
+import { isNearSegments, isRiversideRoute } from './riverside.js'
 
 const pointKey = (p) => `${p[0]},${p[1]}`
 
@@ -58,11 +59,12 @@ export function routeKind(tags = {}) {
 }
 
 // Builds routes.json content from the route query response (relations with
-// members, member ways with geometry). Routes are sorted by relation id.
-export function buildRoutes(body) {
-  const ways = new Map(body.elements
-    .filter((e) => e.type === 'way' && e.geometry)
-    .map((w) => [w.id, w.geometry.map((g) => [round5(g.lat), round5(g.lon)])]))
+// members, ways with geometry). Relation routes are sorted by relation id and
+// followed by one bridge route per supplementary entry, in list order; entries
+// that select no way are returned by name in `missingSupplements`.
+export function buildRoutes(body, supplements = []) {
+  const wayElements = body.elements.filter((e) => e.type === 'way' && e.geometry)
+  const ways = new Map(wayElements.map((w) => [w.id, w.geometry.map((g) => [round5(g.lat), round5(g.lon)])]))
   const routes = body.elements
     .filter((e) => e.type === 'relation' && routeKind(e.tags))
     .sort((a, b) => a.id - b.id)
@@ -72,5 +74,28 @@ export function buildRoutes(body) {
       lines: joinLines((r.members ?? []).filter((m) => m.type === 'way' && ways.has(m.ref)).map((m) => ways.get(m.ref))),
     }))
     .filter((r) => r.lines.length)
-  return { routes }
+
+  const missingSupplements = []
+  for (const supplement of supplements) {
+    const selected = wayElements.filter((w) => selectsWay(supplement, w.tags)).sort((a, b) => a.id - b.id)
+    if (!selected.length) {
+      missingSupplements.push(supplement.name)
+      continue
+    }
+    routes.push({ kind: 'bridge', name: supplement.label, lines: joinLines(selected.map((w) => ways.get(w.id))) })
+  }
+  return { routes, missingSupplements }
+}
+
+const byId = (a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+
+// Vending shops within `meters` of any segment of any route line, as the
+// routes.json `vending` array sorted by shop id.
+export function routeVending(routes, shops, meters = 200) {
+  const segments = routes.flatMap((r) => r.lines.flatMap((line) =>
+    line.slice(1).map(([lat, lng], i) => [{ lat: line[i][0], lng: line[i][1] }, { lat, lng }])))
+  return shops
+    .filter((s) => s.category === 'vending' && isNearSegments(s, segments, meters))
+    .sort(byId)
+    .map(({ name, vending, lat, lng }) => ({ name, vending: vending ?? null, lat, lng }))
 }

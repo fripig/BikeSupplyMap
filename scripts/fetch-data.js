@@ -6,7 +6,8 @@ import { classifyShop } from './lib/classify-shop.js'
 import { normalizeNewTaipei, normalizeTaipei } from './lib/normalize-stations.js'
 import { buildCyclingLayer } from './lib/cycling-layer.js'
 import { classifyRiverside, riversideSegments } from './lib/riverside.js'
-import { buildRoutes } from './lib/routes.js'
+import { BRIDGE_SUPPLEMENTS, supplementClauses } from './lib/bridge-supplements.js'
+import { buildRoutes, routeVending } from './lib/routes.js'
 import { fetchAllPages } from './lib/paginate.js'
 
 // Source URLs and the output directory can be overridden by environment
@@ -30,15 +31,22 @@ const OUT_DIR = process.env.DATA_DIR ?? fileURLToPath(new URL('../public/data/',
 const OVERPASS_AREA = '(area["name"="臺北市"]["admin_level"="4"];area["name"="新北市"]["admin_level"="4"];)->.a;'
 const SHOPS_QUERY = `[out:json][timeout:170];
 ${OVERPASS_AREA}
-(nwr["shop"~"^(convenience|supermarket|wholesale|general|variety_store|greengrocer)$"](area.a););
+(
+  nwr["shop"~"^(convenience|supermarket|wholesale|general|variety_store|greengrocer)$"](area.a);
+  nwr["amenity"="vending_machine"](area.a);
+);
 out center tags;`
-// Bicycle route relations with the geometry of their member ways; which of them
-// are riverside routes is decided in lib/riverside.js, and routes.json (riverside
-// and bridge routes) is built from the same response in lib/routes.js.
+// Bicycle route relations with the geometry of their member ways, plus the ways
+// of the supplementary bridges; which relations are riverside routes is decided
+// in lib/riverside.js, and routes.json (riverside and bridge routes) is built
+// from the same response in lib/routes.js.
 const ROUTES_QUERY = `[out:json][timeout:170];
 ${OVERPASS_AREA}
 rel["route"="bicycle"](area.a)->.r;
-way(r.r);
+(
+  way(r.r);
+  ${supplementClauses(BRIDGE_SUPPLEMENTS)}
+);
 out geom;
 .r out body;`
 // Separate cycleways and roads with painted or separated lanes, plus traffic
@@ -137,7 +145,7 @@ async function fetchShops() {
 
 async function fetchBikeRoutes() {
   const body = await fetchOverpass(ROUTES_QUERY)
-  return { riverside: riversideSegments(body), ...buildRoutes(body) }
+  return { riverside: riversideSegments(body), ...buildRoutes(body, BRIDGE_SUPPLEMENTS) }
 }
 
 async function fetchCyclingLayer(riversideWayIds) {
@@ -151,7 +159,7 @@ const byId = (a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
 const toJsonLines = (items) => `[\n${items.map((i) => JSON.stringify(i)).join(',\n')}\n]\n`
 const jsonLines = (items) => items.map((i) => JSON.stringify(i)).join(',\n')
 const cyclingJson = ({ paths, points }) => `{"paths":[\n${jsonLines(paths)}\n],"points":[\n${jsonLines(points)}\n]}\n`
-const routesJson = (routes) => `{"routes":[\n${jsonLines(routes)}\n]}\n`
+const routesJson = (routes, vending) => `{"routes":[\n${jsonLines(routes)}\n],"vending":[\n${jsonLines(vending)}\n]}\n`
 
 // Nothing is written until every source has succeeded and passed its count
 // check. The files are then written to a temp directory and renamed into place
@@ -172,7 +180,7 @@ async function main() {
   // The Overpass queries run one after the other so a public instance never
   // sees two heavy requests from us at once; the cycling layer also needs the
   // riverside route ways to leave them out.
-  const [taipei, newTaipei, [shops, { riverside, routes }, cycling]] = await Promise.all([
+  const [taipei, newTaipei, [shops, { riverside, routes, missingSupplements }, cycling]] = await Promise.all([
     fetchTaipeiStations(),
     fetchNewTaipeiStations(),
     (async () => {
@@ -187,12 +195,15 @@ async function main() {
     riverside.segments,
   ).sort(byId)
   const riversideStations = stations.filter((s) => s.riverside).length
-  const bridgeRoutes = routes.filter((r) => r.kind === 'bridge').length
+  // counts.bridgeRoutes and its guard cover relation routes only.
+  const supplementLabels = new Set(BRIDGE_SUPPLEMENTS.map((s) => s.label))
+  const bridgeRoutes = routes.filter((r) => r.kind === 'bridge' && !supplementLabels.has(r.name)).length
   const sortedShops = shops
     .map((s) => ({ ...s, lat: round6(s.lat), lng: round6(s.lng) }))
     .sort(byId)
+  const vending = routeVending(routes, sortedShops)
 
-  const shopCounts = { convenience: 0, supermarket: 0, hypermarket: 0, grocery: 0 }
+  const shopCounts = { convenience: 0, supermarket: 0, hypermarket: 0, grocery: 0, vending: 0 }
   for (const s of sortedShops) shopCounts[s.category]++
   const meta = {
     generatedAt: new Date().toISOString(),
@@ -203,6 +214,7 @@ async function main() {
       cyclingPaths: cycling.paths.length,
       cyclingPoints: cycling.points.length,
       bridgeRoutes,
+      routeVending: vending.length,
     },
   }
 
@@ -210,25 +222,29 @@ async function main() {
     taipeiStations: taipei.length,
     newTaipeiStations: newTaipei.length,
     shops: sortedShops.length,
+    vendingMachines: shopCounts.vending,
     riversideRoutes: riverside.routes.length,
     riversideStations,
     cyclingPaths: cycling.includedWays,
     cyclingPoints: cycling.points.length,
     bridgeRoutes,
   })
+  for (const name of missingSupplements) problems.push(`supplementary bridge ${name}: no way matches its name, highway and bridge=yes`)
   if (problems.length) throw new Error(`refusing to publish incomplete data:\n  ${problems.join('\n  ')}`)
 
   await writeAllOrNothing({
     'stations.json': toJsonLines(stations),
-    'shops.json': toJsonLines(sortedShops),
+    // The raw vending tag only feeds routes.json; shops.json keeps its five fields.
+    'shops.json': toJsonLines(sortedShops.map(({ vending: _, ...shop }) => shop)),
     'cycling.json': cyclingJson(cycling),
-    'routes.json': routesJson(routes),
+    'routes.json': routesJson(routes, vending),
     'meta.json': `${JSON.stringify(meta, null, 2)}\n`,
   })
 
   console.log(`stations: 臺北市 ${taipei.length}, 新北市 ${newTaipei.length}`)
   console.log(`riverside: ${riverside.routes.length} routes, ${riversideStations} stations`)
-  console.log(`routes: ${routes.length - bridgeRoutes} riverside, ${bridgeRoutes} bridge`)
+  console.log(`routes: ${routes.filter((r) => r.kind === 'riverside').length} riverside, ${bridgeRoutes} bridge, ${supplementLabels.size} supplementary bridge`)
+  console.log(`route-side vending: ${vending.length}`)
   console.log(`cycling: ${cycling.includedWays} ways joined into ${cycling.paths.length} paths, ${cycling.points.length} signals and crossings`)
   console.log(`shops: ${Object.entries(shopCounts).map(([k, v]) => `${k} ${v}`).join(', ')}`)
 }

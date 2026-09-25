@@ -40,4 +40,14 @@ describe('ShopList', () => {
     )
     expect(link.attributes('target')).toBe('_blank')
   })
+
+  it('lists an unnamed vending machine like a shop', () => {
+    const wrapper = mount(ShopList, {
+      props: { station, items: [{ shop: { id: 'n3', name: null, category: 'vending', lat: 25.027, lng: 121.5436 }, distance: 120 }] },
+    })
+    const item = wrapper.find('li')
+    expect(item.find('.shop__name').text()).toBe('自動販賣機')
+    expect(item.text()).toContain('自動販賣機 · 直線距離 120 m')
+    expect(item.find('a').attributes('href')).toContain('travelmode=walking')
+  })
 })

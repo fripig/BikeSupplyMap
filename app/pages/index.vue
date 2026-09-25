@@ -106,6 +106,7 @@ watch(selected, async () => {
           :show-cycling="showCycling"
           :cycling="cycling"
           :routes="routes"
+          :show-vending="enabledCategories.has('vending')"
           @select="selected = $event"
         />
       </ClientOnly>

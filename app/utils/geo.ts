@@ -1,4 +1,4 @@
-export type Category = 'convenience' | 'supermarket' | 'hypermarket' | 'grocery'
+export type Category = 'convenience' | 'supermarket' | 'hypermarket' | 'grocery' | 'vending'
 
 export interface LatLng {
   lat: number

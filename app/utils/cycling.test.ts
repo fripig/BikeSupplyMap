@@ -1,6 +1,6 @@
 import { nextTick } from 'vue'
 import { describe, expect, it, vi } from 'vitest'
-import { cyclingDashArray, cyclingVisibility, legendEntries, useCyclingToggle, useRouteData } from './cycling'
+import { cyclingDashArray, cyclingVisibility, legendEntries, useCyclingToggle, useRouteData, vendingLabel } from './cycling'
 
 const layer = { paths: [], points: [] }
 const flush = async () => {
@@ -90,21 +90,34 @@ describe('useCyclingToggle', () => {
 })
 
 describe('legendEntries', () => {
-  const labels = (routes: boolean, urban: boolean) => legendEntries(routes, urban).map((e) => e.label)
+  const labels = (routes: boolean, vending: boolean, urban: boolean) => legendEntries(routes, urban, vending).map((e) => e.label)
 
   it.each([
-    [true, true, ['河濱自行車道', '橋梁自行車道', '自行車道', '自行車道（畫線）', '紅綠燈', '穿越道']],
-    [true, false, ['河濱自行車道', '橋梁自行車道']],
-    [false, true, ['自行車道', '自行車道（畫線）', '紅綠燈', '穿越道']],
-    [false, false, []],
-  ])('routes drawn=%s, urban on=%s', (routes, urban, expected) => {
-    expect(labels(routes, urban)).toEqual(expected)
+    [true, true, true, ['河濱自行車道', '橋梁自行車道', '自動販賣機', '自行車道', '自行車道（畫線）', '紅綠燈', '穿越道']],
+    [true, true, false, ['河濱自行車道', '橋梁自行車道', '自動販賣機']],
+    [true, false, false, ['河濱自行車道', '橋梁自行車道']],
+    [false, true, true, ['自行車道', '自行車道（畫線）', '紅綠燈', '穿越道']],
+    [false, true, false, []],
+  ])('routes drawn=%s, vending on=%s, urban on=%s', (routes, vending, urban, expected) => {
+    expect(labels(routes, vending, urban)).toEqual(expected)
+  })
+})
+
+describe('vendingLabel', () => {
+  it.each([
+    [null, 'drinks', '自動販賣機 · 飲料'],
+    ['黑松販賣機', 'coffee;food', '黑松販賣機 · 咖啡、食物'],
+    [null, null, '自動販賣機'],
+    [null, 'drinks;beverages;water', '自動販賣機 · 飲料、飲水'],
+    [null, 'coffee;meals', '自動販賣機 · 咖啡'],
+  ])('%s + %s → %s', (name, vending, expected) => {
+    expect(vendingLabel(name, vending)).toBe(expected)
   })
 })
 
 describe('useRouteData', () => {
   it('loads the routes when started', async () => {
-    const data = { routes: [] }
+    const data = { routes: [], vending: [] }
     const routes = useRouteData(vi.fn(async () => data))
     expect(routes.data.value).toBeNull()
     await routes.start()

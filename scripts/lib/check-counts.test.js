@@ -1,14 +1,14 @@
 import { expect, it } from 'vitest'
 import { checkCounts } from './check-counts.js'
 
-const OK = { taipeiStations: 1780, newTaipeiStations: 1586, shops: 5060, riversideRoutes: 21, riversideStations: 326, cyclingPaths: 2139, cyclingPoints: 3907, bridgeRoutes: 19 }
+const OK = { taipeiStations: 1780, newTaipeiStations: 1586, shops: 5060, vendingMachines: 186, riversideRoutes: 21, riversideStations: 326, cyclingPaths: 2139, cyclingPoints: 3907, bridgeRoutes: 19 }
 
 it('passes when every source meets its minimum', () => {
   expect(checkCounts({ ...OK })).toEqual([])
 })
 
 it('passes at exactly the minimum', () => {
-  expect(checkCounts({ taipeiStations: 500, newTaipeiStations: 500, shops: 2000, riversideRoutes: 15, riversideStations: 150, cyclingPaths: 1000, cyclingPoints: 2000, bridgeRoutes: 10 })).toEqual([])
+  expect(checkCounts({ taipeiStations: 500, newTaipeiStations: 500, shops: 2000, vendingMachines: 100, riversideRoutes: 15, riversideStations: 150, cyclingPaths: 1000, cyclingPoints: 2000, bridgeRoutes: 10 })).toEqual([])
 })
 
 it('names the source and count that fall short', () => {
@@ -17,7 +17,7 @@ it('names the source and count that fall short', () => {
 })
 
 it('reports every short source', () => {
-  expect(checkCounts({ taipeiStations: 0, newTaipeiStations: 0, shops: 0, riversideRoutes: 0, riversideStations: 0, cyclingPaths: 0, cyclingPoints: 0, bridgeRoutes: 0 })).toHaveLength(8)
+  expect(checkCounts({ taipeiStations: 0, newTaipeiStations: 0, shops: 0, vendingMachines: 0, riversideRoutes: 0, riversideStations: 0, cyclingPaths: 0, cyclingPoints: 0, bridgeRoutes: 0 })).toHaveLength(9)
 })
 
 it('names riverside routes and the count when too few come back', () => {
@@ -43,4 +43,9 @@ it('rejects too few urban cycling signals and crossings', () => {
 it('names bridge routes and the count when too few come back', () => {
   expect(checkCounts({ ...OK, bridgeRoutes: 6 }))
     .toEqual(['bridge bike routes: got 6, expected at least 10'])
+})
+
+it('names vending machines and the count when too few come back', () => {
+  expect(checkCounts({ ...OK, vendingMachines: 40 }))
+    .toEqual(['vending machines: got 40, expected at least 100'])
 })

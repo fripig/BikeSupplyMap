@@ -17,19 +17,31 @@ const newTaipeiStations = (n) => Array.from({ length: n }, (_, i) => ({
   sno: `5002${String(i).padStart(5, '0')}`, sna: `YouBike2.0_新${i}`, sarea: '板橋區',
   lat: '25.01', lng: '121.46', act: '1',
 }))
-const overpassBody = (n) => ({
-  elements: Array.from({ length: n }, (_, i) => ({
-    type: 'node', id: i + 1, lat: 25.03, lon: 121.54, tags: { shop: 'convenience', brand: '7-Eleven' },
-  })),
+// n convenience stores plus `vending` drink machines: the first `nearRoute` on
+// the riverside route way at lat 25.03, the rest far from every route.
+const overpassBody = (n, vending = 120, nearRoute = 100) => ({
+  elements: [
+    ...Array.from({ length: n }, (_, i) => ({
+      type: 'node', id: i + 1, lat: 25.03, lon: 121.54, tags: { shop: 'convenience', brand: '7-Eleven' },
+    })),
+    ...Array.from({ length: vending }, (_, i) => ({
+      type: 'node', id: 90000 + i, lat: i < nearRoute ? 25.031 : 24.5, lon: 121.54, tags: { amenity: 'vending_machine', vending: 'drinks' },
+    })),
+  ],
 })
 
 // Riverside routes whose single way runs through the fake Taipei stations at
 // (25.03, 121.54), so every Taipei station is riverside and no New Taipei one is.
-// ...plus `bridges` bridge routes over way 2, far from every station.
-const routesBody = (n, bridges = 19) => ({
+// ...plus `bridges` bridge routes over way 2, far from every station, and
+// two 重陽橋 main-span ways for the supplementary bridge list.
+const routesBody = (n, bridges = 19, supplement = true) => ({
   elements: [
     { type: 'way', id: 1, geometry: [{ lat: 25.03, lon: 121.53 }, { lat: 25.03, lon: 121.55 }] },
     { type: 'way', id: 2, geometry: [{ lat: 24.9, lon: 121.4 }, { lat: 24.901, lon: 121.4 }] },
+    ...(supplement ? [
+      { type: 'way', id: 3, tags: { name: '重陽橋', highway: 'secondary', bridge: 'yes' }, geometry: [{ lat: 25.06, lon: 121.49 }, { lat: 25.06, lon: 121.491 }] },
+      { type: 'way', id: 4, tags: { name: '重陽橋', highway: 'secondary', bridge: 'yes' }, geometry: [{ lat: 25.06, lon: 121.491 }, { lat: 25.061, lon: 121.492 }] },
+    ] : []),
     ...Array.from({ length: n }, (_, i) => ({
       type: 'relation', id: i + 1, tags: { route: 'bicycle', name: `測試河${i}自行車道` }, members: [{ type: 'way', ref: 1 }],
     })),
@@ -127,7 +139,7 @@ describe('fetch-data', () => {
     expect(stdout).toContain('臺北市 600, 新北市 600')
     const data = await readData()
     expect(JSON.parse(data['stations.json'])).toHaveLength(1200)
-    expect(JSON.parse(data['shops.json'])).toHaveLength(2100)
+    expect(JSON.parse(data['shops.json'])).toHaveLength(2220)
     expect(JSON.parse(data['meta.json']).counts.stations).toBe(1200)
   })
 
@@ -180,14 +192,53 @@ describe('fetch-data', () => {
   it('writes riverside and bridge routes and reports the bridge count', async () => {
     const { code, stdout } = await run()
     expect(code).toBe(0)
-    expect(stdout).toContain('routes: 21 riverside, 19 bridge')
+    expect(stdout).toContain('routes: 21 riverside, 19 bridge, 1 supplementary bridge')
     const data = await readData()
     const { routes } = JSON.parse(data['routes.json'])
-    expect(routes).toHaveLength(40)
+    expect(routes).toHaveLength(41)
+    expect(routes[40]).toEqual({ kind: 'bridge', name: '重陽橋（人行道）', lines: [[[25.06, 121.49], [25.06, 121.491], [25.061, 121.492]]] })
     expect(routes[0]).toEqual({ kind: 'riverside', name: '測試河0自行車道', lines: [[[25.03, 121.53], [25.03, 121.55]]] })
     expect(routes[21]).toEqual({ kind: 'bridge', name: '測試0橋自行車道', lines: [[[24.9, 121.4], [24.901, 121.4]]] })
     expect(data['routes.json'].split('\n')[1]).toBe(JSON.stringify(routes[0]) + ',')
     expect(JSON.parse(data['meta.json']).counts.bridgeRoutes).toBe(19)
+  })
+
+  it('publishes vending machines as shops and reports their count', async () => {
+    const { code, stdout } = await run()
+    expect(code).toBe(0)
+    expect(stdout).toContain('vending 120')
+    const data = await readData()
+    const vending = JSON.parse(data['shops.json']).filter((s) => s.category === 'vending')
+    expect(vending).toHaveLength(120)
+    expect(vending[0]).toEqual({ id: 'n90000', name: null, category: 'vending', lat: 25.031, lng: 121.54 })
+    expect(JSON.parse(data['meta.json']).counts.shops.vending).toBe(120)
+  })
+
+  it('writes vending machines near routes to routes.json', async () => {
+    const { code, stdout } = await run()
+    expect(code).toBe(0)
+    expect(stdout).toContain('route-side vending: 100')
+    const data = await readData()
+    const { vending } = JSON.parse(data['routes.json'])
+    expect(vending).toHaveLength(100)
+    expect(vending[0]).toEqual({ name: null, vending: 'drinks', lat: 25.031, lng: 121.54 })
+    expect(JSON.parse(data['meta.json']).counts.routeVending).toBe(100)
+  })
+
+  it('rejects too few vending machines and keeps previous data', async () => {
+    responses['/overpass'] = () => [200, overpassBody(2100, 40, 40)]
+    const { code, stderr } = await run()
+    expect(code).not.toBe(0)
+    expect(stderr).toContain('vending machines: got 40, expected at least 100')
+    expect(await readData()).toEqual(SEED)
+  })
+
+  it('rejects a supplementary bridge that selects no way and keeps previous data', async () => {
+    responses['/routes'] = () => [200, routesBody(21, 19, false)]
+    const { code, stderr } = await run()
+    expect(code).not.toBe(0)
+    expect(stderr).toContain('重陽橋')
+    expect(await readData()).toEqual(SEED)
   })
 
   it('rejects too few bridge routes and keeps previous data', async () => {

@@ -57,8 +57,18 @@ export interface BikeRoute {
   lines: [number, number][][]
 }
 
+// A food or drink vending machine within 200 m of a route; `vending` is the raw
+// OSM tag value, e.g. `coffee;food`, or null when untagged.
+export interface RouteVending {
+  name: string | null
+  vending: string | null
+  lat: number
+  lng: number
+}
+
 export interface RouteData {
   routes: BikeRoute[]
+  vending: RouteVending[]
 }
 
 export const loadRoutes = (fetchFn: Fetch, baseURL: string) => loadJson<RouteData>(fetchFn, baseURL, 'routes.json')

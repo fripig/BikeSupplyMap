@@ -50,12 +50,12 @@ export function pointToSegmentMeters(p, a, b) {
   return toRad(Math.hypot(ax + t * dx, ay + t * dy)) * EARTH_RADIUS_METERS
 }
 
+// Whether point p ({lat, lng}) is within `meters` of any [{lat, lng}, {lat, lng}] segment.
+export const isNearSegments = (p, segments, meters) => segments.some(([a, b]) =>
+  p.lat >= Math.min(a.lat, b.lat) - PREFILTER_DEGREES
+  && p.lat <= Math.max(a.lat, b.lat) + PREFILTER_DEGREES
+  && pointToSegmentMeters(p, a, b) <= meters)
+
 export function classifyRiverside(stations, segments, thresholdMeters = RIVERSIDE_THRESHOLD_METERS) {
-  return stations.map((station) => {
-    const riverside = segments.some(([a, b]) =>
-      station.lat >= Math.min(a.lat, b.lat) - PREFILTER_DEGREES
-      && station.lat <= Math.max(a.lat, b.lat) + PREFILTER_DEGREES
-      && pointToSegmentMeters(station, a, b) <= thresholdMeters)
-    return { ...station, riverside }
-  })
+  return stations.map((station) => ({ ...station, riverside: isNearSegments(station, segments, thresholdMeters) }))
 }

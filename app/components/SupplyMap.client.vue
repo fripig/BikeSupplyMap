@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { Circle, Control, LayerGroup, Map as LeafletMap, Marker, MarkerCluster, MarkerClusterGroup } from 'leaflet'
 import { splitStations, type NearbyShop, type Station } from '~/utils/geo'
-import { cyclingDashArray, cyclingVisibility, legendEntries } from '~/utils/cycling'
+import { cyclingDashArray, cyclingVisibility, legendEntries, vendingLabel } from '~/utils/cycling'
 import type { CyclingData, RouteData } from '~/utils/load-data'
 import { CATEGORY_COLORS, CATEGORY_LABELS } from '~/utils/categories'
 import { formatDistance } from '~/utils/format'
@@ -16,6 +16,7 @@ const props = defineProps<{
   showCycling: boolean
   cycling: CyclingData | null
   routes: RouteData | null
+  showVending: boolean
 }>()
 
 const emit = defineEmits<{
@@ -31,6 +32,7 @@ let radiusCircle: Circle | undefined
 let urbanLayer: MarkerClusterGroup | undefined
 let bikeRenderer: import('leaflet').Canvas | undefined
 let routeLayer: LayerGroup | undefined
+let vendingLayer: LayerGroup | undefined
 let cyclingPaths: LayerGroup | undefined
 let cyclingPoints: LayerGroup | undefined
 let legend: Control | undefined
@@ -146,7 +148,9 @@ watch(() => props.nearby, drawSelection)
 const renderer = () => (bikeRenderer ??= L.canvas({ padding: 0.3 }))
 
 // Draws riverside and bridge routes once their data arrives. Each joined line is
-// one polyline; bridge lines open a popup with the route name.
+// one polyline; bridge lines open a popup with the route name. Route-side vending
+// machines are drawn on the same canvas in their own layer, which follows the
+// 自動販賣機 category, and open a popup with name and types.
 function drawRoutes() {
   if (!map || routeLayer || !props.routes) return
   routeLayer = L.layerGroup()
@@ -161,12 +165,28 @@ function drawRoutes() {
       polyline.addTo(routeLayer)
     }
   }
+  vendingLayer = L.layerGroup()
+  for (const v of props.routes.vending ?? []) {
+    L.circleMarker([v.lat, v.lng], {
+      renderer: renderer(), radius: 5, weight: 2, color: '#fff', fillColor: CATEGORY_COLORS.vending, fillOpacity: 1,
+    })
+      .bindPopup(escapeHtml(vendingLabel(v.name, v.vending)))
+      .addTo(vendingLayer)
+  }
   // Routes go under the urban paths so the thin green lines stay visible.
   map.addLayer(routeLayer)
   if (cyclingPaths && map.hasLayer(cyclingPaths)) {
     map.removeLayer(cyclingPaths)
     map.addLayer(cyclingPaths)
   }
+  // Vending icons are added last so the thick route lines do not cover them.
+  updateVendingLayer()
+}
+
+function updateVendingLayer() {
+  if (!map || !vendingLayer) return
+  if (props.showVending) map.addLayer(vendingLayer)
+  else map.removeLayer(vendingLayer)
   updateLegend()
 }
 
@@ -191,7 +211,7 @@ function buildCyclingLayers(data: CyclingData) {
 // the urban layer is on; it is hidden when neither is shown.
 function updateLegend() {
   if (!map) return
-  const entries = legendEntries(!!routeLayer, !!cyclingPaths && map.hasLayer(cyclingPaths))
+  const entries = legendEntries(!!routeLayer, !!cyclingPaths && map.hasLayer(cyclingPaths), props.showVending)
     .map(({ label, icon }) => `<span><i class="cycling-legend__${icon}"></i>${label}</span>`)
   if (!legend) {
     legend = new L.Control({ position: 'bottomleft' })
@@ -221,6 +241,7 @@ function updateCyclingLayer() {
 }
 
 watch(() => props.routes, drawRoutes)
+watch(() => props.showVending, updateVendingLayer)
 watch(() => [props.showCycling, props.cycling] as const, updateCyclingLayer)
 watch(() => props.showUrban, (show) => {
   if (!map || !urbanLayer) return
@@ -323,6 +344,14 @@ watch(() => [props.selected, props.radius] as const, () => {
 .cycling-legend__dot--crossing {
   background: #fff;
   border: 2px solid #343a40;
+}
+
+.cycling-legend__dot--vending {
+  width: 10px;
+  height: 10px;
+  background: #0c8599;
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1px #0c8599;
 }
 
 .station-icon--selected {
