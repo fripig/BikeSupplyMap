@@ -39,7 +39,7 @@ const PREFILTER_DEGREES = 0.01
 
 // Distance from point p to segment ab, projecting onto a flat plane around p;
 // at a few hundred meters the error against haversine is well under a meter.
-function pointToSegmentMeters(p, a, b) {
+export function pointToSegmentMeters(p, a, b) {
   const k = Math.cos(toRad(p.lat))
   const ax = (a.lng - p.lng) * k
   const ay = a.lat - p.lat

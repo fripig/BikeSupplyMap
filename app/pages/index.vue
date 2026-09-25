@@ -2,7 +2,7 @@
 import { nearbyShops, type Category, type Shop, type Station } from '~/utils/geo'
 import { CATEGORIES, DEFAULT_RADIUS } from '~/utils/categories'
 import { formatDataDate } from '~/utils/format'
-import { loadJson, loadSupplyData } from '~/utils/load-data'
+import { createCyclingLoader, loadJson, loadSupplyData, type CyclingData } from '~/utils/load-data'
 
 const { app } = useRuntimeConfig()
 
@@ -15,6 +15,24 @@ const selected = shallowRef<Station | null>(null)
 const radius = ref(DEFAULT_RADIUS)
 const enabledCategories = ref(new Set<Category>(CATEGORIES))
 const showUrban = ref(false)
+const showCycling = ref(false)
+const cycling = shallowRef<CyclingData | null>(null)
+const cyclingFailed = ref(false)
+const loadCycling = createCyclingLoader(fetch, app.baseURL)
+
+// The bike-path layer is fetched the first time it is turned on. On failure the
+// switch goes back off with a message, and turning it on again retries.
+watch(showCycling, async (on) => {
+  if (!on || cycling.value) return
+  cyclingFailed.value = false
+  try {
+    cycling.value = await loadCycling()
+  } catch (err) {
+    console.error(err)
+    cyclingFailed.value = true
+    showCycling.value = false
+  }
+})
 
 const nearby = computed(() =>
   selected.value ? nearbyShops(selected.value, shops.value, radius.value, enabledCategories.value) : [],
@@ -51,7 +69,13 @@ watch(selected, async () => {
     <aside class="panel">
       <header class="panel__header">
         <h1 class="panel__title">雙北 YouBike 補給地圖</h1>
-        <MapControls v-model:radius="radius" v-model:categories="enabledCategories" v-model:show-urban="showUrban" />
+        <MapControls
+          v-model:radius="radius"
+          v-model:categories="enabledCategories"
+          v-model:show-urban="showUrban"
+          v-model:show-cycling="showCycling"
+          :cycling-failed="cyclingFailed"
+        />
       </header>
 
       <div class="panel__body">
@@ -66,7 +90,7 @@ watch(selected, async () => {
       <footer class="credits">
         <p v-if="dataDate">資料日期：{{ dataDate }}</p>
         <p>
-          店家資料 ©
+          店家與自行車道資料 ©
           <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap 貢獻者</a>（ODbL）；
           站點資料來源：<a href="https://data.taipei/" target="_blank" rel="noopener">臺北市資料大平臺</a>、<a href="https://data.ntpc.gov.tw/" target="_blank" rel="noopener">新北市政府資料開放平臺</a>（政府資料開放授權條款）。
         </p>
@@ -83,6 +107,8 @@ watch(selected, async () => {
           :nearby="nearby"
           :radius="radius"
           :show-urban="showUrban"
+          :show-cycling="showCycling"
+          :cycling="cycling"
           @select="selected = $event"
         />
       </ClientOnly>

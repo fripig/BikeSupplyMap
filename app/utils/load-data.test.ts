@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { loadSupplyData } from './load-data'
+import { createCyclingLoader, loadSupplyData } from './load-data'
 
 const ok = (body: unknown) => ({ ok: true, status: 200, json: async () => body })
 const notFound = { ok: false, status: 404, json: async () => ({}) }
@@ -24,5 +24,35 @@ describe('loadSupplyData', () => {
   it('rejects when stations.json returns a non-200 response', async () => {
     const fetchFn = vi.fn(async (url: string) => (url.endsWith('stations.json') ? notFound : ok([])))
     await expect(loadSupplyData(fetchFn, '/BikeSupplyMap/')).rejects.toThrow('stations.json: HTTP 404')
+  })
+})
+
+describe('createCyclingLoader', () => {
+  const layer = { paths: [{ kind: 'cycleway', coords: [[25, 121.5], [25, 121.501]] }], points: [] }
+
+  it('does not fetch until first called, then loads cycling.json under the base URL', async () => {
+    const fetchFn = vi.fn(async () => ok(layer))
+    const load = createCyclingLoader(fetchFn, '/BikeSupplyMap/')
+    expect(fetchFn).not.toHaveBeenCalled()
+    await expect(load()).resolves.toEqual(layer)
+    expect(fetchFn.mock.calls).toEqual([['/BikeSupplyMap/data/cycling.json']])
+  })
+
+  it('reuses a successful load without fetching again', async () => {
+    const fetchFn = vi.fn(async () => ok(layer))
+    const load = createCyclingLoader(fetchFn, '/BikeSupplyMap/')
+    await load()
+    await load()
+    expect(fetchFn).toHaveBeenCalledTimes(1)
+  })
+
+  it('rejects on HTTP 404 and retries on the next call', async () => {
+    const fetchFn = vi.fn()
+      .mockResolvedValueOnce(notFound)
+      .mockResolvedValueOnce(ok(layer))
+    const load = createCyclingLoader(fetchFn, '/BikeSupplyMap/')
+    await expect(load()).rejects.toThrow('cycling.json: HTTP 404')
+    await expect(load()).resolves.toEqual(layer)
+    expect(fetchFn).toHaveBeenCalledTimes(2)
   })
 })

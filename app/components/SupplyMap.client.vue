@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import type { Circle, LayerGroup, Map as LeafletMap, Marker, MarkerCluster, MarkerClusterGroup } from 'leaflet'
+import type { Circle, Control, LayerGroup, Map as LeafletMap, Marker, MarkerCluster, MarkerClusterGroup } from 'leaflet'
 import { splitStations, type NearbyShop, type Station } from '~/utils/geo'
+import type { CyclingData } from '~/utils/load-data'
 import { CATEGORY_COLORS, CATEGORY_LABELS } from '~/utils/categories'
 import { formatDistance } from '~/utils/format'
 import { directionsUrl } from '~/utils/links'
@@ -11,6 +12,8 @@ const props = defineProps<{
   nearby: NearbyShop[]
   radius: number
   showUrban: boolean
+  showCycling: boolean
+  cycling: CyclingData | null
 }>()
 
 const emit = defineEmits<{
@@ -24,6 +27,13 @@ let shopLayer: LayerGroup | undefined
 let selectedMarker: Marker | undefined
 let radiusCircle: Circle | undefined
 let urbanLayer: MarkerClusterGroup | undefined
+let cyclingPaths: LayerGroup | undefined
+let cyclingPoints: LayerGroup | undefined
+let cyclingLegend: Control | undefined
+
+// Signals and crossings only mean something at street level.
+const CYCLING_POINTS_MIN_ZOOM = 16
+const CYCLING_COLOR = '#2f9e44'
 
 // Shown when there are no riverside stations to frame.
 const FALLBACK_VIEW = { center: [25.0375, 121.5637] as [number, number], zoom: 13 }
@@ -72,8 +82,10 @@ onMounted(async () => {
   if (props.showUrban) map.addLayer(urbanLayer)
   map.addLayer(riversideLayer)
   shopLayer = L.layerGroup().addTo(map)
+  map.on('zoomend', updateCyclingLayer)
 
   drawSelection()
+  updateCyclingLayer()
 })
 
 onBeforeUnmount(() => map?.remove())
@@ -112,6 +124,58 @@ function drawSelection() {
 // drives the redraw. Picking a station or changing the radius also refits the
 // view; flush: 'post' lets the redraw above create the new circle first.
 watch(() => props.nearby, drawSelection)
+// Builds the bike-path layers once, on the first time they are shown. One canvas
+// renderer draws every line and point, so thousands of them add no DOM nodes;
+// nothing on it is interactive, so station markers stay clickable.
+function buildCyclingLayers(data: CyclingData) {
+  const renderer = L.canvas({ padding: 0.3 })
+  cyclingPaths = L.layerGroup()
+  for (const path of data.paths) {
+    L.polyline(path.coords, {
+      renderer, interactive: false, color: CYCLING_COLOR, weight: 3, opacity: 0.85,
+      dashArray: path.kind === 'lane' ? '6 5' : undefined,
+    }).addTo(cyclingPaths)
+  }
+  cyclingPoints = L.layerGroup()
+  for (const point of data.points) {
+    L.circleMarker([point.lat, point.lng], point.kind === 'signal'
+      ? { renderer, interactive: false, radius: 4, weight: 1, color: '#fff', fillColor: '#e03131', fillOpacity: 1 }
+      : { renderer, interactive: false, radius: 4, weight: 2, color: '#343a40', fillColor: '#fff', fillOpacity: 1 },
+    ).addTo(cyclingPoints)
+  }
+  cyclingLegend = new L.Control({ position: 'bottomleft' })
+  cyclingLegend.onAdd = () => {
+    const el = L.DomUtil.create('div', 'cycling-legend')
+    el.innerHTML = '<span><i class="cycling-legend__line"></i>自行車道</span>'
+      + '<span><i class="cycling-legend__line cycling-legend__line--lane"></i>自行車道（畫線）</span>'
+      + '<span><i class="cycling-legend__dot cycling-legend__dot--signal"></i>紅綠燈</span>'
+      + '<span><i class="cycling-legend__dot cycling-legend__dot--crossing"></i>穿越道</span>'
+    return el
+  }
+}
+
+// Shows or hides lines, legend and (at street-level zoom) points to match the
+// switch, the loaded data and the current zoom.
+function updateCyclingLayer() {
+  if (!map) return
+  const on = props.showCycling && props.cycling !== null
+  if (on && !cyclingPaths) buildCyclingLayers(props.cycling!)
+  if (!cyclingPaths || !cyclingPoints || !cyclingLegend) return
+  const showPoints = on && map.getZoom() >= CYCLING_POINTS_MIN_ZOOM
+  if (on) {
+    if (!map.hasLayer(cyclingPaths)) {
+      map.addLayer(cyclingPaths)
+      cyclingLegend.addTo(map)
+    }
+  } else if (map.hasLayer(cyclingPaths)) {
+    map.removeLayer(cyclingPaths)
+    cyclingLegend.remove()
+  }
+  if (showPoints && !map.hasLayer(cyclingPoints)) map.addLayer(cyclingPoints)
+  if (!showPoints && map.hasLayer(cyclingPoints)) map.removeLayer(cyclingPoints)
+}
+
+watch(() => [props.showCycling, props.cycling] as const, updateCyclingLayer)
 watch(() => props.showUrban, (show) => {
   if (!map || !urbanLayer) return
   if (show) map.addLayer(urbanLayer)
@@ -153,6 +217,51 @@ watch(() => [props.selected, props.radius] as const, () => {
   border-radius: 50%;
   color: #343a40;
   font-size: 0.75rem;
+}
+
+.cycling-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.4rem 0.6rem;
+  background: rgb(255 255 255 / 92%);
+  border-radius: 6px;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 25%);
+  font-size: 0.75rem;
+  line-height: 1.3;
+}
+
+.cycling-legend span {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.cycling-legend__line {
+  width: 20px;
+  border-top: 3px solid #2f9e44;
+}
+
+.cycling-legend__line--lane {
+  border-top-style: dashed;
+}
+
+.cycling-legend__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  box-sizing: border-box;
+}
+
+.cycling-legend__dot--signal {
+  background: #e03131;
+  border: 1px solid #fff;
+  box-shadow: 0 0 0 1px #e03131;
+}
+
+.cycling-legend__dot--crossing {
+  background: #fff;
+  border: 2px solid #343a40;
 }
 
 .station-icon--selected {

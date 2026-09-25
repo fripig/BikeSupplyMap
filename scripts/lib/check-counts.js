@@ -4,6 +4,8 @@ export const MINIMUMS = {
   shops: 2000,
   riversideRoutes: 15,
   riversideStations: 150,
+  cyclingPaths: 1000,
+  cyclingPoints: 2000,
 }
 
 const LABELS = {
@@ -12,6 +14,8 @@ const LABELS = {
   shops: 'classified shops',
   riversideRoutes: 'riverside bike-path routes',
   riversideStations: 'riverside stations',
+  cyclingPaths: 'urban cycling paths',
+  cyclingPoints: 'urban cycling signals and crossings',
 }
 
 // Returns one message per source whose count is below its minimum; empty means OK.

@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import { checkCounts } from './lib/check-counts.js'
 import { classifyShop } from './lib/classify-shop.js'
 import { normalizeNewTaipei, normalizeTaipei } from './lib/normalize-stations.js'
+import { buildCyclingLayer } from './lib/cycling-layer.js'
 import { classifyRiverside, riversideSegments } from './lib/riverside.js'
 import { fetchAllPages } from './lib/paginate.js'
 
@@ -38,6 +39,21 @@ rel["route"="bicycle"](area.a)->.r;
 way(r.r);
 out geom;
 .r out body;`
+// Separate cycleways and roads with painted or separated lanes, plus traffic
+// signals and crossings near them; lib/cycling-layer.js drops riverside ways
+// and points that end up farther than 30 m from an urban path.
+const CYCLING_QUERY = `[out:json][timeout:170];
+${OVERPASS_AREA}
+(
+  way["highway"="cycleway"](area.a);
+  way["highway"]["cycleway"~"^(lane|track)$"](area.a);
+  way["highway"]["cycleway:both"~"^(lane|track)$"](area.a);
+  way["highway"]["cycleway:left"~"^(lane|track)$"](area.a);
+  way["highway"]["cycleway:right"~"^(lane|track)$"](area.a);
+)->.p;
+.p out geom;
+node(around.p:30)["highway"~"^(traffic_signals|crossing)$"];
+out;`
 
 async function fetchJson(label, url, init = {}) {
   let res
@@ -121,11 +137,19 @@ async function fetchRiversideRoutes() {
   return riversideSegments(await fetchOverpass(ROUTES_QUERY))
 }
 
+async function fetchCyclingLayer(riversideWayIds) {
+  return buildCyclingLayer(await fetchOverpass(CYCLING_QUERY), riversideWayIds)
+}
+
 const round6 = (n) => Math.round(n * 1e6) / 1e6
 const byId = (a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
 
 // One record per line keeps weekly data diffs reviewable.
 const toJsonLines = (items) => `[\n${items.map((i) => JSON.stringify(i)).join(',\n')}\n]\n`
+const cyclingJson = ({ paths, points }) => {
+  const lines = (items) => items.map((i) => JSON.stringify(i)).join(',\n')
+  return `{"paths":[\n${lines(paths)}\n],"points":[\n${lines(points)}\n]}\n`
+}
 
 // Nothing is written until every source has succeeded and passed its count
 // check. The files are then written to a temp directory and renamed into place
@@ -143,12 +167,17 @@ async function writeAllOrNothing(files) {
 }
 
 async function main() {
-  // The two Overpass queries run one after the other so a public instance never
-  // sees two heavy requests from us at once.
-  const [taipei, newTaipei, [shops, riverside]] = await Promise.all([
+  // The Overpass queries run one after the other so a public instance never
+  // sees two heavy requests from us at once; the cycling layer also needs the
+  // riverside route ways to leave them out.
+  const [taipei, newTaipei, [shops, riverside, cycling]] = await Promise.all([
     fetchTaipeiStations(),
     fetchNewTaipeiStations(),
-    fetchShops().then(async (shops) => [shops, await fetchRiversideRoutes()]),
+    (async () => {
+      const shops = await fetchShops()
+      const riverside = await fetchRiversideRoutes()
+      return [shops, riverside, await fetchCyclingLayer(riverside.wayIds)]
+    })(),
   ])
 
   const stations = classifyRiverside(
@@ -164,7 +193,13 @@ async function main() {
   for (const s of sortedShops) shopCounts[s.category]++
   const meta = {
     generatedAt: new Date().toISOString(),
-    counts: { stations: stations.length, riversideStations, shops: shopCounts },
+    counts: {
+      stations: stations.length,
+      riversideStations,
+      shops: shopCounts,
+      cyclingPaths: cycling.paths.length,
+      cyclingPoints: cycling.points.length,
+    },
   }
 
   const problems = checkCounts({
@@ -173,17 +208,21 @@ async function main() {
     shops: sortedShops.length,
     riversideRoutes: riverside.routes.length,
     riversideStations,
+    cyclingPaths: cycling.paths.length,
+    cyclingPoints: cycling.points.length,
   })
   if (problems.length) throw new Error(`refusing to publish incomplete data:\n  ${problems.join('\n  ')}`)
 
   await writeAllOrNothing({
     'stations.json': toJsonLines(stations),
     'shops.json': toJsonLines(sortedShops),
+    'cycling.json': cyclingJson(cycling),
     'meta.json': `${JSON.stringify(meta, null, 2)}\n`,
   })
 
   console.log(`stations: 臺北市 ${taipei.length}, 新北市 ${newTaipei.length}`)
   console.log(`riverside: ${riverside.routes.length} routes, ${riversideStations} stations`)
+  console.log(`cycling: ${cycling.paths.length} paths, ${cycling.points.length} signals and crossings`)
   console.log(`shops: ${Object.entries(shopCounts).map(([k, v]) => `${k} ${v}`).join(', ')}`)
 }
 

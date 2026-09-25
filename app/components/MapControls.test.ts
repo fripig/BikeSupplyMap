@@ -4,14 +4,19 @@ import { describe, expect, it } from 'vitest'
 import MapControls from './MapControls.vue'
 import { CATEGORIES } from '~/utils/categories'
 
-const mountControls = (showUrban: boolean) => mount(MapControls, {
+const mountControls = (showUrban: boolean, extra: Record<string, unknown> = {}) => mount(MapControls, {
   props: {
     radius: 500,
     categories: new Set(CATEGORIES),
     showUrban,
+    showCycling: false,
     'onUpdate:showUrban': () => {},
+    'onUpdate:showCycling': () => {},
+    ...extra,
   },
 })
+const switchLabelled = (wrapper: ReturnType<typeof mountControls>, label: string) =>
+  wrapper.findAll('.switch').find((s) => s.text() === label)!
 
 describe('MapControls urban station switch', () => {
   it('is labelled 顯示市區站點 and reflects an off state', () => {
@@ -26,5 +31,20 @@ describe('MapControls urban station switch', () => {
     const wrapper = mountControls(false)
     await wrapper.find('.switch input').setValue(true)
     expect(wrapper.emitted('update:showUrban')).toEqual([[true]])
+  })
+})
+
+describe('MapControls urban bike-path switch', () => {
+  it('is labelled 都市自行車道, starts off, and emits when toggled', async () => {
+    const wrapper = mountControls(false)
+    const input = switchLabelled(wrapper, '都市自行車道').find<HTMLInputElement>('input')
+    expect(input.element.checked).toBe(false)
+    await input.setValue(true)
+    expect(wrapper.emitted('update:showCycling')).toEqual([[true]])
+  })
+
+  it('shows the load failure message only when loading failed', () => {
+    expect(mountControls(false).text()).not.toContain('自行車道資料載入失敗')
+    expect(mountControls(false, { cyclingFailed: true }).text()).toContain('自行車道資料載入失敗')
   })
 })

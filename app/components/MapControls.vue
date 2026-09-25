@@ -5,6 +5,8 @@ import { CATEGORIES, CATEGORY_COLORS, CATEGORY_LABELS, RADIUS_OPTIONS } from '~/
 const radius = defineModel<number>('radius', { required: true })
 const categories = defineModel<Set<Category>>('categories', { required: true })
 const showUrban = defineModel<boolean>('showUrban', { required: true })
+const showCycling = defineModel<boolean>('showCycling', { required: true })
+defineProps<{ cyclingFailed?: boolean }>()
 
 function toggle(category: Category) {
   const next = new Set(categories.value)
@@ -20,6 +22,13 @@ function toggle(category: Category) {
     <span class="switch__track" aria-hidden="true" />
     <span>顯示市區站點</span>
   </label>
+
+  <label class="switch">
+    <input v-model="showCycling" type="checkbox" role="switch">
+    <span class="switch__track" aria-hidden="true" />
+    <span>都市自行車道</span>
+  </label>
+  <p v-if="cyclingFailed" class="switch__error" role="alert">自行車道資料載入失敗</p>
 
   <fieldset class="controls">
     <legend class="controls__legend">範圍（直線距離）</legend>
@@ -58,6 +67,12 @@ function toggle(category: Category) {
   min-height: 2rem;
   font-size: 0.9rem;
   cursor: pointer;
+}
+
+.switch__error {
+  margin: -0.5rem 0 0.75rem;
+  color: #b42318;
+  font-size: 0.8rem;
 }
 
 .switch input {

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-25T09:33:51.788Z",
+  "generatedAt": "2026-09-25T09:51:14.481Z",
   "counts": {
     "stations": 3366,
     "riversideStations": 326,
@@ -8,6 +8,8 @@
       "supermarket": 777,
       "hypermarket": 47,
       "grocery": 445
-    }
+    },
+    "cyclingPaths": 2139,
+    "cyclingPoints": 3907
   }
 }

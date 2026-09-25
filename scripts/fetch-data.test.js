@@ -34,6 +34,19 @@ const routesBody = (n) => ({
   ],
 })
 
+// Urban cycling layer: n short cycleways along lat 25.2, and m signals on the first one.
+const cyclingBody = (n, m) => ({
+  elements: [
+    ...Array.from({ length: n }, (_, i) => ({
+      type: 'way', id: 1000 + i, tags: { highway: 'cycleway' },
+      geometry: [{ lat: 25.2, lon: 121.0 + i * 0.001 }, { lat: 25.2, lon: 121.0005 + i * 0.001 }],
+    })),
+    ...Array.from({ length: m }, (_, i) => ({
+      type: 'node', id: 5000 + i, lat: 25.2, lon: 121.0001, tags: { highway: 'traffic_signals' },
+    })),
+  ],
+})
+
 let server
 let baseUrl
 let responses
@@ -45,7 +58,10 @@ beforeAll(async () => {
     for await (const chunk of req) form += chunk
     // Both Overpass queries go to one URL; tell them apart by the query text.
     const query = new URLSearchParams(form).get('data') ?? ''
-    const route = url.pathname === '/overpass' && query.includes('"route"="bicycle"') ? '/routes' : url.pathname
+    const route = url.pathname !== '/overpass' ? url.pathname
+      : query.includes('"route"="bicycle"') ? '/routes'
+        : query.includes('"highway"="cycleway"') ? '/cycling'
+          : url.pathname
     const [status, body] = responses[route](url)
     res.writeHead(status, { 'Content-Type': 'application/json' })
     res.end(typeof body === 'string' ? body : JSON.stringify(body))
@@ -57,7 +73,12 @@ beforeAll(async () => {
 afterAll(() => new Promise((resolve) => server.close(resolve)))
 
 let dataDir
-const SEED = { 'stations.json': '[\n{"id":"old"}\n]\n', 'shops.json': '[\n{"id":"n0"}\n]\n', 'meta.json': '{"generatedAt":"2026-01-01T00:00:00.000Z"}\n' }
+const SEED = {
+  'stations.json': '[\n{"id":"old"}\n]\n',
+  'shops.json': '[\n{"id":"n0"}\n]\n',
+  'cycling.json': '{"paths":[],"points":[]}\n',
+  'meta.json': '{"generatedAt":"2026-01-01T00:00:00.000Z"}\n',
+}
 
 beforeEach(async () => {
   responses = {
@@ -65,6 +86,7 @@ beforeEach(async () => {
     '/newtaipei': (url) => [200, url.searchParams.get('page') === '0' ? newTaipeiStations(600) : []],
     '/overpass': () => [200, overpassBody(2100)],
     '/routes': () => [200, routesBody(21)],
+    '/cycling': () => [200, cyclingBody(1000, 2000)],
   }
   const root = await mkdtemp(join(tmpdir(), 'fetch-data-test-'))
   dataDir = join(root, 'data')
@@ -132,6 +154,36 @@ describe('fetch-data', () => {
     const { code, stderr } = await run()
     expect(code).not.toBe(0)
     expect(stderr).toContain('riverside stations: got 0, expected at least 150')
+    expect(await readData()).toEqual(SEED)
+  })
+
+  it('writes the urban cycling layer and reports its counts', async () => {
+    const { code, stdout } = await run()
+    expect(code).toBe(0)
+    expect(stdout).toContain('cycling: 1000 paths, 2000 signals and crossings')
+    const data = await readData()
+    const cycling = JSON.parse(data['cycling.json'])
+    expect(cycling.paths).toHaveLength(1000)
+    expect(cycling.paths[0]).toEqual({ kind: 'cycleway', coords: [[25.2, 121.0], [25.2, 121.0005]] })
+    expect(cycling.points[0]).toEqual({ kind: 'signal', lat: 25.2, lng: 121.0001 })
+    expect(data['cycling.json'].split('\n')[1]).toBe(JSON.stringify(cycling.paths[0]) + ',')
+    const { counts } = JSON.parse(data['meta.json'])
+    expect([counts.cyclingPaths, counts.cyclingPoints]).toEqual([1000, 2000])
+  })
+
+  it('rejects too few urban cycling paths and keeps previous data', async () => {
+    responses['/cycling'] = () => [200, cyclingBody(300, 2000)]
+    const { code, stderr } = await run()
+    expect(code).not.toBe(0)
+    expect(stderr).toContain('urban cycling paths: got 300, expected at least 1000')
+    expect(await readData()).toEqual(SEED)
+  })
+
+  it('keeps previous data when the urban cycling query fails', async () => {
+    responses['/cycling'] = () => [504, '<html>error</html>']
+    const { code, stderr } = await run()
+    expect(code).not.toBe(0)
+    expect(stderr).toContain('HTTP 504')
     expect(await readData()).toEqual(SEED)
   })
 

@@ -21,3 +21,32 @@ export async function loadSupplyData(fetchFn: Fetch, baseURL: string): Promise<S
   ])
   return { stations, shops }
 }
+
+export interface CyclingPath {
+  kind: 'cycleway' | 'lane'
+  coords: [number, number][]
+}
+
+export interface CyclingPoint {
+  kind: 'signal' | 'crossing'
+  lat: number
+  lng: number
+}
+
+export interface CyclingData {
+  paths: CyclingPath[]
+  points: CyclingPoint[]
+}
+
+// cycling.json is fetched on first use only. A successful load is reused; a
+// failed one is forgotten so the next call tries again.
+export function createCyclingLoader(fetchFn: Fetch, baseURL: string): () => Promise<CyclingData> {
+  let pending: Promise<CyclingData> | null = null
+  return () => {
+    pending ??= loadJson<CyclingData>(fetchFn, baseURL, 'cycling.json').catch((err) => {
+      pending = null
+      throw err
+    })
+    return pending
+  }
+}
