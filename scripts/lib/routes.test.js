@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { BRIDGE_SUPPLEMENTS, supplementClauses } from './bridge-supplements.js'
+import { LOOP_ROUTES } from './loop-routes.js'
 import { buildRoutes, joinLines, routeVending } from './routes.js'
 
 const P1 = [25.0, 121.5]
@@ -122,6 +123,68 @@ describe('buildRoutes supplementary bridges', () => {
   })
 })
 
+describe('buildRoutes loop routes', () => {
+  const rel = (id, name, refs) => ({ type: 'relation', id, tags: { route: 'bicycle', name }, members: refs.map((ref) => ({ type: 'way', ref, role: '' })) })
+  const way = (id, lat) => ({ type: 'way', id, geometry: [{ lat, lon: 121.5 }, { lat, lon: 121.501 }] })
+  const ENTRY = { name: '環騎臺北', label: '環騎臺北（連接道路）' }
+
+  it('lists 環騎臺北 as the first loop route', () => {
+    expect(LOOP_ROUTES[0]).toEqual(ENTRY)
+  })
+
+  it('keeps only loop ways that no riverside or bridge relation lists', () => {
+    const { routes, missingLoops } = buildRoutes({
+      elements: [
+        rel(1, '環騎臺北', [101, 102, 103, 104]),
+        rel(2, '基隆河左岸自行車道', [102]),
+        rel(3, '華江橋自行車道', [103]),
+        rel(4, '環島1號線 (順時針)', [101]),
+        way(101, 25.01), way(102, 25.02), way(103, 25.03), way(104, 25.04),
+      ],
+    }, [], [ENTRY])
+    expect(missingLoops).toEqual([])
+    expect(routes.find((r) => r.kind === 'link')).toEqual({
+      kind: 'link',
+      name: '環騎臺北（連接道路）',
+      lines: [[[25.01, 121.5], [25.01, 121.501]], [[25.04, 121.5], [25.04, 121.501]]],
+    })
+  })
+
+  it('places link routes after relation routes and supplementary bridges', () => {
+    const { routes } = buildRoutes({
+      elements: [
+        rel(1, '環騎臺北', [101]),
+        rel(2, '淡水河左岸自行車道', [102]),
+        way(101, 25.01), way(102, 25.02),
+        { type: 'way', id: 20, tags: { name: '重陽橋', highway: 'secondary', bridge: 'yes' }, geometry: [{ lat: 25.06, lon: 121.49 }, { lat: 25.06, lon: 121.491 }] },
+      ],
+    }, [{ name: '重陽橋', highway: 'secondary', label: '重陽橋（人行道）' }], [ENTRY])
+    expect(routes.map((r) => [r.kind, r.name])).toEqual([
+      ['riverside', '淡水河左岸自行車道'],
+      ['bridge', '重陽橋（人行道）'],
+      ['link', '環騎臺北（連接道路）'],
+    ])
+  })
+
+  it('reports a loop that matches no relation', () => {
+    const { routes, missingLoops } = buildRoutes({ elements: [rel(2, '淡水河左岸自行車道', [102]), way(102, 25.02)] }, [], [ENTRY])
+    expect(routes.map((r) => r.kind)).toEqual(['riverside'])
+    expect(missingLoops).toEqual(['環騎臺北'])
+  })
+
+  it('reports a loop whose every way belongs to a riverside or bridge relation', () => {
+    const { routes, missingLoops } = buildRoutes({
+      elements: [rel(1, '環騎臺北', [102, 103]), rel(2, '淡水河左岸自行車道', [102]), rel(3, '華江橋自行車道', [103]), way(102, 25.02), way(103, 25.03)],
+    }, [], [ENTRY])
+    expect(routes.some((r) => r.kind === 'link')).toBe(false)
+    expect(missingLoops).toEqual(['環騎臺北'])
+  })
+
+  it('reports no missing loops when no loop list is given', () => {
+    expect(buildRoutes({ elements: [] }).missingLoops).toEqual([])
+  })
+})
+
 describe('routeVending', () => {
   // A line along lat 25.0; 0.001° of latitude is about 111 m.
   const routes = [{ kind: 'riverside', name: '淡水河左岸自行車道', lines: [[[25.0, 121.5], [25.0, 121.51]]] }]
@@ -131,6 +194,14 @@ describe('routeVending', () => {
     const near = vending('n2', 25.00135) // about 150 m
     const far = vending('n1', 25.00225) // about 250 m
     expect(routeVending(routes, [far, near])).toEqual([{ name: null, vending: 'drinks', lat: 25.00135, lng: 121.505 }])
+  })
+
+  it('keeps vending machines near a link line', () => {
+    // A link line along lat 25.01, about 1.1 km north of the riverside line.
+    const withLink = [...routes, { kind: 'link', name: '環騎臺北（連接道路）', lines: [[[25.01, 121.5], [25.01, 121.51]]] }]
+    const nearLink = vending('n3', 25.01108) // about 120 m from the link line, 1.2 km from the other
+    expect(routeVending(routes, [nearLink])).toEqual([])
+    expect(routeVending(withLink, [nearLink])).toEqual([{ name: null, vending: 'drinks', lat: 25.01108, lng: 121.505 }])
   })
 
   it('ignores other categories and sorts by shop id', () => {

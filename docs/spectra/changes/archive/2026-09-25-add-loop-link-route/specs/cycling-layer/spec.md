@@ -1,46 +1,5 @@
-# cycling-layer Specification
+## MODIFIED Requirements
 
-## Purpose
-
-An optional map overlay showing the urban bike-path network of Taipei City and New Taipei City, with traffic signals and crossings along it, so riders can plan the city-street leg between riverside paths, stations, and shops. It reads the static `cycling.json` produced by the `supply-data` capability.
-
-## Requirements
-
-### Requirement: Urban bike-path layer toggle
-
-The site SHALL provide a toggle labelled `都市自行車道`, on by default and operable by touch. The toggle SHALL be independent of the `顯示市區站點` toggle and SHALL NOT change the station markers, the selected station, or its shop list. The site SHALL request `data/cycling.json` on page load while the toggle is on; if the user turns the toggle off before a load has succeeded, the next turn-on SHALL request it. After a successful load, turning the toggle off and on again SHALL NOT request the file again. If the request fails, the site SHALL show `自行車道資料載入失敗` next to the toggle, turn the toggle off, and leave the rest of the map working; turning it on again SHALL retry.
-
-#### Scenario: Layer is on at load
-
-- **WHEN** the user opens the site
-- **THEN** the `都市自行車道` toggle is on, `data/cycling.json` is requested once, and urban bike paths are drawn when it arrives
-
-#### Scenario: Load failure is contained
-
-- **WHEN** the user opens the site and `data/cycling.json` returns HTTP 404
-- **THEN** the message `自行車道資料載入失敗` appears, the toggle is off, and stations remain selectable
-
-#### Scenario: No reload after success
-
-- **WHEN** `data/cycling.json` loaded successfully and the user turns the toggle off and on
-- **THEN** no further request for `data/cycling.json` is made
-
----
-### Requirement: Urban bike paths are drawn
-
-While the `都市自行車道` toggle is on, the site SHALL draw every path in `cycling.json` as one continuous line at every zoom level, with `cycleway` paths drawn as solid lines and `lane` paths drawn as dashed lines, thinner than riverside and bridge route lines. The lines SHALL NOT intercept clicks on station markers.
-
-#### Scenario: Paths appear when enabled
-
-- **WHEN** the `都市自行車道` toggle is on and `cycling.json` has loaded
-- **THEN** solid lines appear for separate cycleways and dashed lines for painted lanes, and clicking a station marker on top of a line still selects the station
-
-#### Scenario: Paths disappear when disabled
-
-- **WHEN** the layer is on and the user turns it off
-- **THEN** all urban bike-path lines and signal and crossing markers are removed, and riverside and bridge routes stay drawn
-
----
 ### Requirement: Traffic signals and crossings along urban paths
 
 While the `都市自行車道` toggle is on and the map zoom is 16 or greater, the site SHALL mark every point in `cycling.json` with an icon by kind: one icon for `signal` (紅綠燈) and a different icon for `crossing` (穿越道). Below zoom 16 the site SHALL NOT show these markers. The site SHALL show a legend naming 河濱自行車道, 橋梁自行車道, and 連接道路 while route data is loaded, 自動販賣機 while route data is loaded and the 自動販賣機 category toggle is on, and additionally 自行車道, 自行車道（畫線）, 紅綠燈, and 穿越道 while the urban layer is on, each with its line or icon style.
@@ -74,27 +33,6 @@ While the `都市自行車道` toggle is on and the map zoom is 16 or greater, t
 | not loaded | on | on | 自行車道, 自行車道（畫線）, 紅綠燈, 穿越道 |
 | not loaded | on | off | (no legend) |
 
-
-<!-- @trace
-source: add-loop-link-route
-updated: 2026-09-25
-code:
-  - app/utils/load-data.ts
-  - app/utils/cycling.ts
-  - public/data/meta.json
-  - public/data/routes.json
-  - app/components/SupplyMap.client.vue
-  - scripts/fetch-data.js
-  - scripts/lib/loop-routes.js
-  - scripts/lib/routes.js
-tests:
-  - app/utils/cycling.test.ts
-  - e2e/map.spec.ts
-  - scripts/fetch-data.test.js
-  - scripts/lib/routes.test.js
--->
-
----
 ### Requirement: Riverside and bridge routes are drawn
 
 On page load the site SHALL request `data/routes.json` and draw every route in it at every zoom level, independent of the `都市自行車道` switch: riverside routes as thick lines in one color, bridge routes (including supplementary bridges) as thick lines in a second, distinct color, and link routes as thick lines in a third color distinct from both. Each line of a route SHALL be drawn as one continuous polyline. Selecting a bridge route line or a link route line SHALL show that route's `name`. The site SHALL also mark every entry of the `routes.json` `vending` array with a vending icon at every zoom level while routes are drawn and the 自動販賣機 category toggle is on. Turning the 自動販賣機 toggle off SHALL remove every vending icon, and turning it on again SHALL show them again, without reloading `routes.json` and without changing the route lines. Selecting a vending icon SHALL show its `name`, or 自動販賣機 when the name is `null`, followed by the type from its `vending` value (飲料 for `drinks` or `beverages`, 飲水 for `water`, 咖啡 for `coffee`, 食物 for any other listed food value), and no type when `vending` is `null`. Route lines and vending icons SHALL NOT intercept clicks on station markers. If `data/routes.json` cannot be loaded, the site SHALL show `自行車道資料載入失敗` in the controls and leave stations, shops, and the urban layer working.
@@ -141,22 +79,3 @@ On page load the site SHALL request `data/routes.json` and draw every route in i
 
 - **WHEN** `data/routes.json` returns HTTP 404
 - **THEN** the message `自行車道資料載入失敗` appears in the controls, no route line or vending icon is drawn, and stations remain selectable
-
-<!-- @trace
-source: add-loop-link-route
-updated: 2026-09-25
-code:
-  - app/utils/load-data.ts
-  - app/utils/cycling.ts
-  - public/data/meta.json
-  - public/data/routes.json
-  - app/components/SupplyMap.client.vue
-  - scripts/fetch-data.js
-  - scripts/lib/loop-routes.js
-  - scripts/lib/routes.js
-tests:
-  - app/utils/cycling.test.ts
-  - e2e/map.spec.ts
-  - scripts/fetch-data.test.js
-  - scripts/lib/routes.test.js
--->

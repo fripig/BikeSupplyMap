@@ -38,9 +38,10 @@ let cyclingPoints: LayerGroup | undefined
 let legend: Control | undefined
 let legendEl: HTMLElement | undefined
 
-// Riverside and bridge routes are thick and always shown; urban paths are thin.
+// Riverside, bridge and link routes are thick and always shown; urban paths are thin.
 const RIVERSIDE_COLOR = '#1971c2'
 const BRIDGE_COLOR = '#ae3ec9'
+const LINK_COLOR = '#9c6644'
 const CYCLING_COLOR = '#2f9e44'
 
 // Shown when there are no riverside stations to frame.
@@ -150,21 +151,19 @@ watch(() => props.nearby, drawSelection)
 // no DOM nodes; it sits under the station markers, so stations stay clickable.
 const renderer = () => (bikeRenderer ??= L.canvas({ padding: 0.3 }))
 
-// Draws riverside and bridge routes once their data arrives. Each joined line is
-// one polyline; bridge lines open a popup with the route name. Route-side vending
+// Draws riverside, bridge and link routes once their data arrives. Each joined
+// line is one polyline; bridge and link lines open a popup with the route name. Route-side vending
 // machines are drawn on the same canvas in their own layer, which follows the
 // 自動販賣機 category, and open a popup with name and types.
 function drawRoutes() {
   if (!map || routeLayer || !props.routes) return
   routeLayer = L.layerGroup()
   for (const route of props.routes.routes) {
-    const bridge = route.kind === 'bridge'
+    const named = route.kind !== 'riverside'
+    const color = route.kind === 'bridge' ? BRIDGE_COLOR : route.kind === 'link' ? LINK_COLOR : RIVERSIDE_COLOR
     for (const line of route.lines) {
-      const polyline = L.polyline(line, {
-        renderer: renderer(), interactive: bridge, weight: 6, opacity: 0.9,
-        color: bridge ? BRIDGE_COLOR : RIVERSIDE_COLOR,
-      })
-      if (bridge) polyline.bindPopup(escapeHtml(route.name))
+      const polyline = L.polyline(line, { renderer: renderer(), interactive: named, weight: 6, opacity: 0.9, color })
+      if (named) polyline.bindPopup(escapeHtml(route.name))
       polyline.addTo(routeLayer)
     }
   }
@@ -325,6 +324,10 @@ watch(() => [props.selected, props.radius] as const, () => {
 
 .cycling-legend__line--bridge {
   border-top: 5px solid #ae3ec9;
+}
+
+.cycling-legend__line--link {
+  border-top: 5px solid #9c6644;
 }
 
 .cycling-legend__line--lane {

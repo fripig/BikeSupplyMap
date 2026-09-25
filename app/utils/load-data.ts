@@ -52,7 +52,7 @@ export function createCyclingLoader(fetchFn: Fetch, baseURL: string): () => Prom
 }
 
 export interface BikeRoute {
-  kind: 'riverside' | 'bridge'
+  kind: 'riverside' | 'bridge' | 'link'
   name: string
   lines: [number, number][][]
 }

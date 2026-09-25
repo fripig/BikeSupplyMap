@@ -58,20 +58,25 @@ export function routeKind(tags = {}) {
   return null
 }
 
+const memberWays = (relation) => (relation.members ?? []).filter((m) => m.type === 'way').map((m) => m.ref)
+
 // Builds routes.json content from the route query response (relations with
 // members, ways with geometry). Relation routes are sorted by relation id and
-// followed by one bridge route per supplementary entry, in list order; entries
-// that select no way are returned by name in `missingSupplements`.
-export function buildRoutes(body, supplements = []) {
+// followed by one bridge route per supplementary entry, then one link route per
+// loop entry, each in list order. A link route holds the loop relation's member
+// ways that no riverside or bridge relation lists. Supplementary entries that
+// select no way are returned by name in `missingSupplements`, and loop entries
+// that match no relation or keep no way in `missingLoops`.
+export function buildRoutes(body, supplements = [], loops = []) {
   const wayElements = body.elements.filter((e) => e.type === 'way' && e.geometry)
   const ways = new Map(wayElements.map((w) => [w.id, w.geometry.map((g) => [round5(g.lat), round5(g.lon)])]))
-  const routes = body.elements
-    .filter((e) => e.type === 'relation' && routeKind(e.tags))
-    .sort((a, b) => a.id - b.id)
+  const relations = body.elements.filter((e) => e.type === 'relation')
+  const published = relations.filter((r) => routeKind(r.tags)).sort((a, b) => a.id - b.id)
+  const routes = published
     .map((r) => ({
       kind: routeKind(r.tags),
       name: r.tags.name,
-      lines: joinLines((r.members ?? []).filter((m) => m.type === 'way' && ways.has(m.ref)).map((m) => ways.get(m.ref))),
+      lines: joinLines(memberWays(r).filter((ref) => ways.has(ref)).map((ref) => ways.get(ref))),
     }))
     .filter((r) => r.lines.length)
 
@@ -84,7 +89,19 @@ export function buildRoutes(body, supplements = []) {
     }
     routes.push({ kind: 'bridge', name: supplement.label, lines: joinLines(selected.map((w) => ways.get(w.id))) })
   }
-  return { routes, missingSupplements }
+
+  const publishedWays = new Set(published.flatMap(memberWays))
+  const missingLoops = []
+  for (const loop of loops) {
+    const refs = [...new Set(relations.filter((r) => r.tags?.name === loop.name).flatMap(memberWays))]
+      .filter((ref) => ways.has(ref) && !publishedWays.has(ref))
+    if (!refs.length) {
+      missingLoops.push(loop.name)
+      continue
+    }
+    routes.push({ kind: 'link', name: loop.label, lines: joinLines(refs.map((ref) => ways.get(ref))) })
+  }
+  return { routes, missingSupplements, missingLoops }
 }
 
 const byId = (a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)

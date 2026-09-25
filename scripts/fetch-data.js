@@ -7,6 +7,7 @@ import { normalizeNewTaipei, normalizeTaipei } from './lib/normalize-stations.js
 import { buildCyclingLayer } from './lib/cycling-layer.js'
 import { classifyRiverside, riversideSegments } from './lib/riverside.js'
 import { BRIDGE_SUPPLEMENTS, supplementClauses } from './lib/bridge-supplements.js'
+import { LOOP_ROUTES } from './lib/loop-routes.js'
 import { buildRoutes, routeVending } from './lib/routes.js'
 import { fetchAllPages } from './lib/paginate.js'
 
@@ -38,8 +39,8 @@ ${OVERPASS_AREA}
 out center tags;`
 // Bicycle route relations with the geometry of their member ways, plus the ways
 // of the supplementary bridges; which relations are riverside routes is decided
-// in lib/riverside.js, and routes.json (riverside and bridge routes) is built
-// from the same response in lib/routes.js.
+// in lib/riverside.js, and routes.json (riverside, bridge and link routes) is
+// built from the same response in lib/routes.js.
 const ROUTES_QUERY = `[out:json][timeout:170];
 ${OVERPASS_AREA}
 rel["route"="bicycle"](area.a)->.r;
@@ -145,7 +146,7 @@ async function fetchShops() {
 
 async function fetchBikeRoutes() {
   const body = await fetchOverpass(ROUTES_QUERY)
-  return { riverside: riversideSegments(body), ...buildRoutes(body, BRIDGE_SUPPLEMENTS) }
+  return { riverside: riversideSegments(body), ...buildRoutes(body, BRIDGE_SUPPLEMENTS, LOOP_ROUTES) }
 }
 
 async function fetchCyclingLayer(riversideWayIds) {
@@ -180,7 +181,7 @@ async function main() {
   // The Overpass queries run one after the other so a public instance never
   // sees two heavy requests from us at once; the cycling layer also needs the
   // riverside route ways to leave them out.
-  const [taipei, newTaipei, [shops, { riverside, routes, missingSupplements }, cycling]] = await Promise.all([
+  const [taipei, newTaipei, [shops, { riverside, routes, missingSupplements, missingLoops }, cycling]] = await Promise.all([
     fetchTaipeiStations(),
     fetchNewTaipeiStations(),
     (async () => {
@@ -230,6 +231,7 @@ async function main() {
     bridgeRoutes,
   })
   for (const name of missingSupplements) problems.push(`supplementary bridge ${name}: no way matches its name, highway and bridge=yes`)
+  for (const name of missingLoops) problems.push(`loop route ${name}: no relation with this name, or no way left outside riverside and bridge routes`)
   if (problems.length) throw new Error(`refusing to publish incomplete data:\n  ${problems.join('\n  ')}`)
 
   await writeAllOrNothing({
@@ -243,7 +245,7 @@ async function main() {
 
   console.log(`stations: 臺北市 ${taipei.length}, 新北市 ${newTaipei.length}`)
   console.log(`riverside: ${riverside.routes.length} routes, ${riversideStations} stations`)
-  console.log(`routes: ${routes.filter((r) => r.kind === 'riverside').length} riverside, ${bridgeRoutes} bridge, ${supplementLabels.size} supplementary bridge`)
+  console.log(`routes: ${routes.filter((r) => r.kind === 'riverside').length} riverside, ${bridgeRoutes} bridge, ${supplementLabels.size} supplementary bridge, ${routes.filter((r) => r.kind === 'link').length} link`)
   console.log(`route-side vending: ${vending.length}`)
   console.log(`cycling: ${cycling.includedWays} ways joined into ${cycling.paths.length} paths, ${cycling.points.length} signals and crossings`)
   console.log(`shops: ${Object.entries(shopCounts).map(([k, v]) => `${k} ${v}`).join(', ')}`)

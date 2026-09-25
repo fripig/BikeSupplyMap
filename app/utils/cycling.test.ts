@@ -93,9 +93,9 @@ describe('legendEntries', () => {
   const labels = (routes: boolean, vending: boolean, urban: boolean) => legendEntries(routes, urban, vending).map((e) => e.label)
 
   it.each([
-    [true, true, true, ['河濱自行車道', '橋梁自行車道', '自動販賣機', '自行車道', '自行車道（畫線）', '紅綠燈', '穿越道']],
-    [true, true, false, ['河濱自行車道', '橋梁自行車道', '自動販賣機']],
-    [true, false, false, ['河濱自行車道', '橋梁自行車道']],
+    [true, true, true, ['河濱自行車道', '橋梁自行車道', '連接道路', '自動販賣機', '自行車道', '自行車道（畫線）', '紅綠燈', '穿越道']],
+    [true, true, false, ['河濱自行車道', '橋梁自行車道', '連接道路', '自動販賣機']],
+    [true, false, false, ['河濱自行車道', '橋梁自行車道', '連接道路']],
     [false, true, true, ['自行車道', '自行車道（畫線）', '紅綠燈', '穿越道']],
     [false, true, false, []],
   ])('routes drawn=%s, vending on=%s, urban on=%s', (routes, vending, urban, expected) => {

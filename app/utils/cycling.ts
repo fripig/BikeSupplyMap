@@ -81,6 +81,7 @@ export function legendEntries(routesShown: boolean, urbanShown: boolean, vending
   if (routesShown) {
     entries.push({ label: '河濱自行車道', icon: 'line cycling-legend__line--riverside' })
     entries.push({ label: '橋梁自行車道', icon: 'line cycling-legend__line--bridge' })
+    entries.push({ label: '連接道路', icon: 'line cycling-legend__line--link' })
     if (vendingShown) entries.push({ label: '自動販賣機', icon: 'dot cycling-legend__dot--vending' })
   }
   if (urbanShown) {
@@ -92,7 +93,7 @@ export function legendEntries(routesShown: boolean, urbanShown: boolean, vending
   return entries
 }
 
-// Riverside and bridge routes, loaded once by `start()` after the page mounts.
+// Riverside, bridge and link routes, loaded once by `start()` after the page mounts.
 // A failure sets `failed` and leaves `data` empty; there is no retry.
 export function useRouteData(load: () => Promise<RouteData>) {
   const data = shallowRef<RouteData | null>(null)

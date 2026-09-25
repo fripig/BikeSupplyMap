@@ -62,6 +62,19 @@ test('the 重陽橋 main span shows 重陽橋（人行道）', async ({ page }) 
   await expect(page.locator('.leaflet-popup-content')).toHaveText(name)
 })
 
+test('the 環騎臺北 link line shows its name and is in the legend', async ({ page }) => {
+  const name = '環騎臺北（連接道路）'
+  const route = (await loadRoutes(page)).routes.find((r) => r.kind === 'link' && r.name === name)
+  if (!route) throw new Error(`routes.json has no link route named ${name}`)
+  await expect(legend(page)).toContainText('連接道路')
+  const line = route.lines.reduce((a, b) => (b.length > a.length ? b : a))
+  const at = line[Math.floor(line.length / 2)]!
+  await setView(page, at, 17)
+  const point = await toPagePoint(page, at)
+  await page.mouse.click(point.x, point.y)
+  await expect(page.locator('.leaflet-popup-content')).toHaveText(name)
+})
+
 test('a riverside station on a route can be selected', async ({ page }) => {
   // At zoom 18 the cluster radius (50 px) is about 27 m, so pick a station with
   // no other riverside station within 40 m; its marker is then never clustered.
