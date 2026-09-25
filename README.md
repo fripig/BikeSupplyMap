@@ -40,10 +40,13 @@
 npm install
 npm run dev          # 開發伺服器：http://localhost:3000/BikeSupplyMap/
 npm test             # 單元測試（Vitest）
+npm run test:e2e     # 瀏覽器測試（Playwright），只在本機跑
 npm run fetch-data   # 重新抓取站點與店家資料，寫入 public/data/
 npm run generate     # 產生靜態網站到 .output/public/
 npm run preview      # 預覽產生的靜態網站：http://localhost:3001/BikeSupplyMap/
 ```
+
+瀏覽器測試（`e2e/`）用 Playwright 在桌面（1280×800）與手機（375×812）兩種尺寸各跑一次，檢查地圖上畫在 canvas 的東西：路線旁販賣機圖示與圖例跟著「自動販賣機」開關、販賣機 popup 內容、重陽橋 popup、點選河濱站點。第一次使用先執行 `npx playwright install chromium` 下載瀏覽器。測試會沿用已經在跑的 `npm run dev`（沒有就自動啟動），並讀取 `public/data/` 裡當下的資料，所以資料每週更新後不用改測試。開發伺服器會把地圖物件掛在 `window.__supplyMap` 給測試用，`npm run generate` 產生的網站不含這段。CI（GitHub Actions）不會跑瀏覽器測試。
 
 `npm run fetch-data` 任何一個來源失敗、回傳格式不對，或筆數少於下限（臺北、新北各 500 站，店家 2000 家，自動販賣機 100 台，河濱路線 15 條，河濱站點 150 站，橋梁路線 10 條，都市自行車道 1000 段（串接前），紅綠燈與穿越道 2000 個），或補充橋梁清單有任何一座橋在 OSM 找不到時，會以非 0 結束，且不會覆蓋 `public/data/` 裡既有的檔案。
 

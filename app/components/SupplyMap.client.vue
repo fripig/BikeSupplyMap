@@ -56,6 +56,9 @@ onMounted(async () => {
   await import('leaflet.markercluster')
 
   map = L.map(container.value!)
+  // The dev server exposes the map to the local Playwright tests in e2e/; the
+  // generated site drops this, as import.meta.dev is false there.
+  if (import.meta.dev) (window as unknown as { __supplyMap: LeafletMap }).__supplyMap = map
   // Esri World Light Gray: a pale base map without shop, bus or building icons,
   // so the bike routes drawn on top stand out. Its labels sit in their own pane
   // above the bike lines and below the markers, and never take clicks. Esri has
