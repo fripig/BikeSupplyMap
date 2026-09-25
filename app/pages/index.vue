@@ -2,6 +2,7 @@
 import { nearbyShops, type Category, type Shop, type Station } from '~/utils/geo'
 import { CATEGORIES, DEFAULT_RADIUS } from '~/utils/categories'
 import { formatDataDate } from '~/utils/format'
+import { loadJson, loadSupplyData } from '~/utils/load-data'
 
 const { app } = useRuntimeConfig()
 
@@ -18,23 +19,16 @@ const nearby = computed(() =>
   selected.value ? nearbyShops(selected.value, shops.value, radius.value, enabledCategories.value) : [],
 )
 
-async function loadJson<T>(name: string): Promise<T> {
-  const res = await fetch(`${app.baseURL}data/${name}`)
-  if (!res.ok) throw new Error(`${name}: HTTP ${res.status}`)
-  return res.json()
-}
-
 onMounted(async () => {
   // The data date is informative only; the map works without it.
-  loadJson<{ generatedAt: string }>('meta.json')
+  loadJson<{ generatedAt: string }>(fetch, app.baseURL, 'meta.json')
     .then((meta) => { dataDate.value = formatDataDate(meta.generatedAt) })
     .catch((err) => console.warn(err))
 
   try {
-    ;[stations.value, shops.value] = await Promise.all([
-      loadJson<Station[]>('stations.json'),
-      loadJson<Shop[]>('shops.json'),
-    ])
+    const data = await loadSupplyData(fetch, app.baseURL)
+    stations.value = data.stations
+    shops.value = data.shops
     status.value = 'ready'
   } catch (err) {
     console.error(err)

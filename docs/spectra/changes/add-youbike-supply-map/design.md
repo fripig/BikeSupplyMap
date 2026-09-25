@@ -71,9 +71,12 @@ Directions use the documented Maps URLs format `https://www.google.com/maps/dir/
 
 - `scripts/lib/normalize-stations.js`: `normalizeTaipei(record)` and `normalizeNewTaipei(record)` → station object or `null` when inactive.
 - `scripts/lib/classify-shop.js`: `classifyShop(osmElement)` → shop object or `null` when excluded.
-- `scripts/fetch-data.js`: network I/O, pagination, minimum-count checks, atomic write (write all three files to a temp directory, then rename into `public/data/` only after every check passes).
+- `scripts/lib/paginate.js`: `fetchAllPages(fetchPage, pageSize)` → every record, requesting the next page only after a full page.
+- `scripts/lib/check-counts.js`: `checkCounts(counts)` → one message per source below its minimum.
+- `scripts/fetch-data.js`: network I/O, Overpass instance fallback, minimum-count checks, and the write step (nothing is written until every check passes; the three files are then written to a temp directory and renamed into `public/data/` one by one). Source URLs and the output directory can be overridden with `TAIPEI_URL`, `NEW_TAIPEI_URL`, `OVERPASS_URL`, and `DATA_DIR` so tests can run the script against a local server.
 - `app/utils/geo.ts`: `haversineMeters(a, b)`, `nearbyShops(station, shops, radiusMeters, enabledCategories)` → sorted array of `{shop, distance}`. Pure, no Nuxt imports, so vitest imports it directly.
 - `app/utils/links.ts`: `directionsUrl(station, shop)` → string. Pure.
+- `app/utils/load-data.ts`: `loadSupplyData(fetch, baseURL)` → `{ stations, shops }`, rejecting when either file returns a non-200 response.
 - `app/components/SupplyMap.client.vue`: Leaflet map, station clusters, shop markers; emits the selected station.
 - `app/components/ShopList.vue`, `app/components/MapControls.vue`, `app/pages/index.vue`: list rendering, radius and category controls, data loading, error and freshness display; no business logic beyond calling the utils above.
 
@@ -81,7 +84,7 @@ Directions use the documented Maps URLs format `https://www.google.com/maps/dir/
 
 **Acceptance criteria:**
 
-- `npx vitest run` passes, covering: both station normalizers (including `act` filtering and prefix removal), every row of the classification example table, haversine radius filtering and ordering from the `supply-map` example, and the directions URL example.
+- `npx vitest run` passes, covering: both station normalizers (including `act` filtering and prefix removal), every row of the classification example table, New Taipei pagination, the fetch script end to end against a local server (success, Overpass 406/504 keeping previous files byte-identical, and a 120-station New Taipei result being rejected), haversine radius filtering and ordering from the `supply-map` example, the directions URL example, data-load failure, the empty-range message, and the radius options with the 500 m default.
 - `npm run fetch-data` succeeds against live sources and prints per-city station counts and per-category shop counts.
 - `npm run generate` succeeds and `.output/public/index.html` references assets under `/BikeSupplyMap/_nuxt/`; manual check in a browser at desktop width and at 375 px covers: station click lists shops, radius switch, category toggles, directions link opens Google Maps walking mode, data date shown.
 - Deploy workflow run is green and the Pages URL returns HTTP 200.
@@ -92,7 +95,7 @@ Directions use the documented Maps URLs format `https://www.google.com/maps/dir/
 
 ## Risks / Trade-offs
 
-- [Overpass rate limits or outages] → refresh runs weekly only, sends a User-Agent, fails without overwriting data; the site keeps serving the last good data.
+- [Overpass rate limits or outages] → refresh runs weekly only and sends a User-Agent. During implementation on 2026-09-25 overpass-api.de answered HTTP 504 for several minutes, so the script falls back across public instances in order — overpass-api.de, maps.mail.ru, overpass.kumi.systems — treating 429/5xx, network errors, timeouts, and `remark` errors as "try the next instance", and repeats the round once after 30 s. Other 4xx responses stop immediately. If every attempt fails, it exits non-zero without overwriting data and the site keeps serving the last good data.
 - [OSM coverage gaps: some real stores missing or mis-tagged] → accepted; site credits OSM so users know the source. Classification table is easy to extend.
 - [Open-data endpoint URLs or field names change] → normalizers are unit-tested with recorded samples; the minimum-count check makes a silent schema break fail loudly.
 - [About 600 KB of JSON on first load (estimated from probes: ~275 KB shops + station file of similar order)] → acceptable for an MVP; Pages serves gzip. Measure the built payload during verification; if over 1 MB, trim fields.

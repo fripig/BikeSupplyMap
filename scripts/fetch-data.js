@@ -4,9 +4,14 @@ import { join } from 'node:path'
 import { checkCounts } from './lib/check-counts.js'
 import { classifyShop } from './lib/classify-shop.js'
 import { normalizeNewTaipei, normalizeTaipei } from './lib/normalize-stations.js'
+import { fetchAllPages } from './lib/paginate.js'
 
-const TAIPEI_URL = 'https://tcgbusfs.blob.core.windows.net/dotapp/youbike/v2/youbike_immediate.json'
-const NEW_TAIPEI_URL = 'https://data.ntpc.gov.tw/api/datasets/010e5b15-3823-4b20-b401-b1cf000550c5/json'
+// Source URLs and the output directory can be overridden by environment
+// variables so tests can run the whole script against a local server.
+const TAIPEI_URL = process.env.TAIPEI_URL
+  ?? 'https://tcgbusfs.blob.core.windows.net/dotapp/youbike/v2/youbike_immediate.json'
+const NEW_TAIPEI_URL = process.env.NEW_TAIPEI_URL
+  ?? 'https://data.ntpc.gov.tw/api/datasets/010e5b15-3823-4b20-b401-b1cf000550c5/json'
 const NEW_TAIPEI_PAGE_SIZE = 1000
 // Public Overpass instances, tried in order when one is busy or unreachable.
 const OVERPASS_URLS = process.env.OVERPASS_URL
@@ -17,7 +22,7 @@ const OVERPASS_URLS = process.env.OVERPASS_URL
       'https://overpass.kumi.systems/api/interpreter',
     ]
 const USER_AGENT = 'BikeSupplyMap/0.1 (https://github.com/fripig/BikeSupplyMap)'
-const OUT_DIR = fileURLToPath(new URL('../public/data/', import.meta.url))
+const OUT_DIR = process.env.DATA_DIR ?? fileURLToPath(new URL('../public/data/', import.meta.url))
 
 const OVERPASS_QUERY = `[out:json][timeout:170];
 (area["name"="臺北市"]["admin_level"="4"];area["name"="新北市"]["admin_level"="4"];)->.a;
@@ -50,12 +55,10 @@ async function fetchTaipeiStations() {
 }
 
 async function fetchNewTaipeiStations() {
-  const records = []
-  for (let page = 0; ; page++) {
-    const batch = await fetchJson(`New Taipei YouBike page ${page}`, `${NEW_TAIPEI_URL}?page=${page}&size=${NEW_TAIPEI_PAGE_SIZE}`)
-    records.push(...batch)
-    if (batch.length < NEW_TAIPEI_PAGE_SIZE) break
-  }
+  const records = await fetchAllPages(
+    (page) => fetchJson(`New Taipei YouBike page ${page}`, `${NEW_TAIPEI_URL}?page=${page}&size=${NEW_TAIPEI_PAGE_SIZE}`),
+    NEW_TAIPEI_PAGE_SIZE,
+  )
   return records.map(normalizeNewTaipei).filter(Boolean)
 }
 
@@ -101,8 +104,10 @@ const byId = (a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
 // One record per line keeps weekly data diffs reviewable.
 const toJsonLines = (items) => `[\n${items.map((i) => JSON.stringify(i)).join(',\n')}\n]\n`
 
-// Write into a temp directory next to the output, then rename into place, so a
-// crash mid-write never leaves a mix of old and new files.
+// Nothing is written until every source has succeeded and passed its count
+// check. The files are then written to a temp directory and renamed into place
+// one by one, so a failed or partial write never leaves a truncated file; a crash
+// between the renames could still leave old and new files side by side.
 async function writeAllOrNothing(files) {
   await mkdir(OUT_DIR, { recursive: true })
   const tmp = await mkdtemp(join(OUT_DIR, '..', '.data-tmp-'))

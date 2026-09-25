@@ -21,12 +21,13 @@ const SHOP_TAG_FALLBACK = {
 const fold = (s) => (s ?? '').toLowerCase().replace(/\s+/g, '')
 const containsAny = (text, words) => words.some((w) => text.includes(w))
 
+// Brand groups are checked in the spec's order: hypermarket, supermarket, convenience.
 function categoryFromText(text, allText) {
   if (!text) return null
+  if (containsAny(text, HYPERMARKET) && !containsAny(allText, HYPERMARKET_EXCEPT)) return 'hypermarket'
   for (const [category, words] of BRAND_RULES) {
     if (containsAny(text, words)) return category
   }
-  if (containsAny(text, HYPERMARKET) && !containsAny(allText, HYPERMARKET_EXCEPT)) return 'hypermarket'
   return null
 }
 
