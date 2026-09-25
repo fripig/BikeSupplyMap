@@ -1,0 +1,12 @@
+{
+  "generatedAt": "2026-09-25T08:44:04.621Z",
+  "counts": {
+    "stations": 3366,
+    "shops": {
+      "convenience": 3791,
+      "supermarket": 777,
+      "hypermarket": 47,
+      "grocery": 445
+    }
+  }
+}
