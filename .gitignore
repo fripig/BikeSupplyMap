@@ -1,0 +1,5 @@
+# Spectra app data
+.spectra/
+
+# Claude Code local settings
+.claude/settings.local.json
