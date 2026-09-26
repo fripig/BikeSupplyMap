@@ -1,8 +1,9 @@
 import { expect, test, type Page } from '@playwright/test'
-import { shelterLabel, toiletLabel, vendingLabel } from '../app/utils/cycling'
+import { shelterLabel, showerLabel, toiletLabel, vendingLabel } from '../app/utils/cycling'
 import { haversineMeters } from '../app/utils/geo'
+import { mapsPlaceUrl } from '../app/utils/links'
 import type { FacilityData, RouteVending, ShelterData } from '../app/utils/load-data'
-import { isVendingTeal, loadRoutes, loadStations, nextFrames, openMap, setView, toPagePoint, type LatLng } from './helpers'
+import { isVendingTeal, loadRoutes, loadStations, nextFrames, openMap, setView, settleMap, toPagePoint, type LatLng } from './helpers'
 
 const legend = (page: Page) => page.locator('.cycling-legend')
 const vendingChip = (page: Page) => page.getByRole('button', { name: '自動販賣機' })
@@ -14,6 +15,15 @@ const toiletIcons = (page: Page) => page.locator('.facility-icon--toilet')
 const showerIcons = (page: Page) => page.locator('.facility-icon--shower')
 const facilityRequests = (page: Page) => page.evaluate(() =>
   performance.getEntriesByType('resource').filter((e) => e.name.endsWith('/data/facilities.json')).length)
+
+// A place popup shows its text, then a link opening the place in Google Maps.
+async function expectPlacePopup(page: Page, label: string, place: { lat: number, lng: number }) {
+  const popup = page.locator('.leaflet-popup-content')
+  await expect(popup).toHaveText(`${label}在 Google 地圖開啟`)
+  const link = popup.getByRole('link', { name: '在 Google 地圖開啟' })
+  await expect(link).toHaveAttribute('href', mapsPlaceUrl(place))
+  await expect(link).toHaveAttribute('target', '_blank')
+}
 
 async function vendingDrawnAt(page: Page, at: LatLng) {
   await nextFrames(page)
@@ -55,7 +65,7 @@ test('a vending icon opens a popup matching its routes.json record', async ({ pa
   const v = await findVisibleVending(page)
   const point = await toPagePoint(page, [v.lat, v.lng])
   await page.mouse.click(point.x, point.y)
-  await expect(page.locator('.leaflet-popup-content')).toHaveText(vendingLabel(v.name, v.vending))
+  await expectPlacePopup(page, vendingLabel(v.name, v.vending), v)
 })
 
 test('the 重陽橋 main span shows 重陽橋（人行道）', async ({ page }) => {
@@ -123,7 +133,7 @@ test('a bridge shelter icon shows its name with 橋下', async ({ page }) => {
   await setView(page, [spot.lat, spot.lng], 17)
   const label = shelterLabel(spot.kind, spot.name)
   await page.getByTitle(label, { exact: true }).first().click()
-  await expect(page.locator('.leaflet-popup-content')).toHaveText(label)
+  await expectPlacePopup(page, label, spot)
 })
 
 test('a failed shelters.json load shows a message, turns the switch off and leaves stations working', async ({ page }) => {
@@ -203,7 +213,20 @@ test('a toilet icon shows its name and tagged attributes', async ({ page }) => {
   await setView(page, [toilet.lat, toilet.lng], 17)
   const label = toiletLabel(toilet)
   await page.getByTitle(label, { exact: true }).first().click()
-  await expect(page.locator('.leaflet-popup-content')).toHaveText(label)
+  await expectPlacePopup(page, label, toilet)
+})
+
+test('a shower icon shows its label and a Google Maps link', async ({ page }) => {
+  const { showers } = await (await page.request.get('data/facilities.json')).json() as FacilityData
+  const stations = await loadStations(page)
+  const shower = showers.find((sh) => stations.every((st) => haversineMeters(st, sh) > 40)
+    && showers.every((o) => o === sh || haversineMeters(o, sh) > 40))
+  if (!shower) throw new Error('facilities.json has no shower clear of stations and other showers')
+  await facilitySwitch(page, '淋浴').click()
+  await setView(page, [shower.lat, shower.lng], 17)
+  const label = showerLabel(shower)
+  await page.getByTitle(label, { exact: true }).first().click()
+  await expectPlacePopup(page, label, shower)
 })
 
 test('a failed facilities.json load shows a message under 廁所 and leaves stations working', async ({ page }) => {
@@ -228,4 +251,87 @@ test('the 廁所 failure message clears once 淋浴 loads facilities.json', asyn
   await facilitySwitch(page, '淋浴').click()
   await expect(showerIcons(page).first()).toBeAttached()
   await expect(page.getByText('廁所資料載入失敗')).toHaveCount(0)
+})
+
+const stationSwitch = (page: Page, label: '河濱站點' | '市區站點') => page.locator('label.switch', { hasText: new RegExp(`^${label}$`) })
+const urbanMarkers = (page: Page) => page.locator('.station-icon--urban, .urban-cluster')
+
+const riversideMarkers = (page: Page) => page.locator('.station-icon:not(.station-icon--urban):not(.station-icon--selected), .marker-cluster')
+// The selected station's shop list items and its shop and radius circles.
+const selectionCounts = async (page: Page) => [
+  await page.locator('.shop').count(),
+  await page.locator('.leaflet-overlay-pane svg path').count(),
+]
+
+// Picks a station of the given kind with no other station within 40 m, whose
+// shop list is not empty at the default radius.
+async function selectLoneStation(page: Page, riverside: boolean) {
+  const stations = await loadStations(page)
+  for (const station of stations.filter((s) => s.riverside === riverside)) {
+    if (stations.some((o) => o !== station && haversineMeters(station, o) <= 40)) continue
+    await settleMap(page)
+    await setView(page, [station.lat, station.lng], 18)
+    await page.getByTitle(station.name, { exact: true }).first().click()
+    await expect(page.locator('.station-name')).toHaveText(station.name)
+    if (await page.locator('.shop').count() > 0) return station
+  }
+  throw new Error(`no lone ${riverside ? 'riverside' : 'urban'} station with nearby shops`)
+}
+
+test('station switches show and hide each kind of station and keep the selection', async ({ page }) => {
+  await expect(page.getByRole('switch', { name: '河濱站點' })).toBeChecked()
+  await expect(page.getByRole('switch', { name: '市區站點' })).not.toBeChecked()
+  await expect(riversideMarkers(page).first()).toBeAttached()
+  await expect(urbanMarkers(page)).toHaveCount(0)
+  const station = await selectLoneStation(page, true)
+  const counts = await selectionCounts(page)
+  expect(counts[1]).toBeGreaterThan(counts[0]!)
+
+  // 河濱 on, 市區 on: both kinds shown.
+  await stationSwitch(page, '市區站點').click()
+  await expect(urbanMarkers(page).first()).toBeAttached()
+  await expect(riversideMarkers(page).first()).toBeAttached()
+  // 河濱 off, 市區 on: only urban stations.
+  await stationSwitch(page, '河濱站點').click()
+  await expect(riversideMarkers(page)).toHaveCount(0)
+  await expect(urbanMarkers(page).first()).toBeAttached()
+  // 河濱 off, 市區 off: no station markers but the selected one.
+  await stationSwitch(page, '市區站點').click()
+  await expect(riversideMarkers(page)).toHaveCount(0)
+  await expect(urbanMarkers(page)).toHaveCount(0)
+  // The selected station keeps its highlight, name, shop list and shop markers.
+  await expect(page.locator('.station-icon--selected')).toHaveCount(1)
+  await expect(page.locator('.station-name')).toHaveText(station.name)
+  expect(await selectionCounts(page)).toEqual(counts)
+
+  await stationSwitch(page, '河濱站點').click()
+  await expect(riversideMarkers(page).first()).toBeAttached()
+  await expect(page.getByRole('switch', { name: '都市自行車道' })).toBeChecked()
+  await expect(legend(page)).toContainText('自行車道（畫線）')
+})
+
+test('an urban station stays selected when 市區站點 is turned off', async ({ page }) => {
+  await stationSwitch(page, '市區站點').click()
+  const station = await selectLoneStation(page, false)
+  const counts = await selectionCounts(page)
+  await stationSwitch(page, '市區站點').click()
+  await expect(urbanMarkers(page)).toHaveCount(0)
+  await expect(page.locator('.station-icon--selected')).toHaveCount(1)
+  await expect(page.locator('.station-name')).toHaveText(station.name)
+  expect(await selectionCounts(page)).toEqual(counts)
+})
+
+test('the selected station links to its place in Google Maps', async ({ page }) => {
+  const riverside = (await loadStations(page)).filter((s) => s.riverside)
+  const [first, second] = riverside.filter((s) => riverside.every((o) => o === s || haversineMeters(s, o) > 40))
+  const link = page.locator('.station-link')
+  for (const station of [first!, second!]) {
+    await settleMap(page)
+    await setView(page, [station.lat, station.lng], 18)
+    await page.getByTitle(station.name, { exact: true }).first().click()
+    await expect(page.locator('.station-name')).toHaveText(station.name)
+    await expect(link).toHaveText('在 Google 地圖開啟')
+    await expect(link).toHaveAttribute('href', mapsPlaceUrl(station))
+    await expect(link).toHaveAttribute('target', '_blank')
+  }
 })

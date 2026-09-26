@@ -8,11 +8,13 @@ const mountControls = (showUrban: boolean, extra: Record<string, unknown> = {}) 
   props: {
     radius: 500,
     categories: new Set(CATEGORIES),
+    showRiverside: true,
     showUrban,
     showCycling: false,
     showShelters: false,
     showToilets: false,
     showShowers: false,
+    'onUpdate:showRiverside': () => {},
     'onUpdate:showUrban': () => {},
     'onUpdate:showCycling': () => {},
     'onUpdate:showShelters': () => {},
@@ -24,18 +26,21 @@ const mountControls = (showUrban: boolean, extra: Record<string, unknown> = {}) 
 const switchLabelled = (wrapper: ReturnType<typeof mountControls>, label: string) =>
   wrapper.findAll('.switch').find((s) => s.text() === label)!
 
-describe('MapControls urban station switch', () => {
-  it('is labelled 顯示市區站點 and reflects an off state', () => {
+describe('MapControls station switches', () => {
+  it('lists 河濱站點 then 市區站點 first, reflecting their states', () => {
     const wrapper = mountControls(false)
-    const input = wrapper.find<HTMLInputElement>('.switch input')
-    expect(wrapper.find('.switch').text()).toBe('顯示市區站點')
-    expect(input.attributes('role')).toBe('switch')
-    expect(input.element.checked).toBe(false)
+    const [riverside, urban] = wrapper.findAll('.switch')
+    expect([riverside!.text(), urban!.text()]).toEqual(['河濱站點', '市區站點'])
+    for (const s of [riverside!, urban!]) expect(s.find('input').attributes('role')).toBe('switch')
+    expect(riverside!.find<HTMLInputElement>('input').element.checked).toBe(true)
+    expect(urban!.find<HTMLInputElement>('input').element.checked).toBe(false)
   })
 
-  it('emits the new value when toggled', async () => {
+  it('emits each switch\'s new value when toggled', async () => {
     const wrapper = mountControls(false)
-    await wrapper.find('.switch input').setValue(true)
+    await switchLabelled(wrapper, '河濱站點').find('input').setValue(false)
+    await switchLabelled(wrapper, '市區站點').find('input').setValue(true)
+    expect(wrapper.emitted('update:showRiverside')).toEqual([[false]])
     expect(wrapper.emitted('update:showUrban')).toEqual([[true]])
   })
 })

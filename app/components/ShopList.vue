@@ -23,7 +23,7 @@ defineProps<{
           <div class="shop__meta">{{ CATEGORY_LABELS[shop.category] }} · 直線距離 {{ formatDistance(distance) }}</div>
         </div>
         <a
-          class="shop__link"
+          class="shop__link map-link"
           :href="directionsUrl(station, shop)"
           target="_blank"
           rel="noopener"
@@ -79,17 +79,6 @@ defineProps<{
 
 .shop__link {
   flex: none;
-  padding: 0.4rem 0.6rem;
-  border: 1px solid var(--accent);
-  border-radius: 6px;
-  color: var(--accent);
-  font-size: 0.85rem;
-  text-decoration: none;
   white-space: nowrap;
-}
-
-.shop__link:hover {
-  background: var(--accent);
-  color: #fff;
 }
 </style>

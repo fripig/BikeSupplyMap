@@ -2,6 +2,7 @@
 import { nearbyShops, type Category, type Shop, type Station } from '~/utils/geo'
 import { CATEGORIES, DEFAULT_RADIUS } from '~/utils/categories'
 import { formatDataDate } from '~/utils/format'
+import { mapsPlaceUrl } from '~/utils/links'
 import { useCyclingToggle, useLazyToggle, useRouteData } from '~/utils/cycling'
 import { createCyclingLoader, createJsonLoader, loadJson, loadRoutes, loadSupplyData, type FacilityData, type ShelterData } from '~/utils/load-data'
 
@@ -15,6 +16,7 @@ const dataDate = ref<string | null>(null)
 const selected = shallowRef<Station | null>(null)
 const radius = ref(DEFAULT_RADIUS)
 const enabledCategories = ref(new Set<Category>(CATEGORIES))
+const showRiverside = ref(true)
 const showUrban = ref(false)
 const {
   show: showCycling,
@@ -97,6 +99,7 @@ watch(selected, async () => {
         <MapControls
           v-model:radius="radius"
           v-model:categories="enabledCategories"
+          v-model:show-riverside="showRiverside"
           v-model:show-urban="showUrban"
           v-model:show-cycling="showCycling"
           v-model:show-shelters="showShelters"
@@ -113,9 +116,10 @@ watch(selected, async () => {
         <template v-if="selected">
           <h2 ref="stationHeading" class="station-name">{{ selected.name }}</h2>
           <p class="station-meta">{{ selected.city }}{{ selected.district }} · 附近 {{ nearby.length }} 家</p>
+          <a class="station-link map-link" :href="mapsPlaceUrl(selected)" target="_blank" rel="noopener">在 Google 地圖開啟</a>
           <ShopList :station="selected" :items="nearby" :no-category-selected="enabledCategories.size === 0" />
         </template>
-        <p v-else-if="status === 'ready'" class="hint">地圖預設只顯示河濱自行車道旁的 YouBike 站點，點站點查看附近可以補給的店家。要找市區站點，打開「顯示市區站點」。</p>
+        <p v-else-if="status === 'ready'" class="hint">地圖預設只顯示河濱自行車道旁的 YouBike 站點，點站點查看附近可以補給的店家。要找市區站點，打開「市區站點」。</p>
       </div>
 
       <footer class="credits">
@@ -137,6 +141,7 @@ watch(selected, async () => {
           :selected="selected"
           :nearby="nearby"
           :radius="radius"
+          :show-riverside="showRiverside"
           :show-urban="showUrban"
           :show-cycling="showCycling"
           :cycling="cycling"
@@ -211,6 +216,27 @@ body {
   margin: 0 0 0.5rem;
   color: var(--muted);
   font-size: 0.85rem;
+}
+
+/* Outlined link buttons that open Google Maps: the station link here and the
+   shop list's walking directions. */
+.map-link {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  color: var(--accent);
+  font-size: 0.85rem;
+  text-decoration: none;
+}
+
+.map-link:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+.station-link {
+  display: inline-block;
+  margin-bottom: 0.5rem;
 }
 
 .hint {

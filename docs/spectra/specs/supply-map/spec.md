@@ -90,30 +90,90 @@ The site SHALL display the data generation date from `data/meta.json` and credit
 ---
 ### Requirement: Map shows riverside stations by default
 
-The site SHALL load `data/stations.json` and `data/shops.json` relative to the site base path and render the Esri World Light Gray Canvas base map with its reference (label) layer, crediting Esri and OpenStreetMap contributors in the map attribution. On load the site SHALL show every station whose `riverside` field is `true` as a clustered marker, SHALL NOT show stations whose `riverside` field is `false`, and SHALL fit the initial map view to the bounds of the riverside stations. The site SHALL provide a toggle labelled `顯示市區站點`, off by default; while it is on, the site SHALL also show every non-riverside station, drawn in a marker style visually distinct from riverside stations. Turning the toggle on or off SHALL NOT clear the selected station, its shop list, or its shop markers. The user interface text SHALL be Traditional Chinese.
+The site SHALL load `data/stations.json` and `data/shops.json` relative to the site base path and render the Esri World Light Gray Canvas base map with its reference (label) layer, crediting Esri and OpenStreetMap contributors in the map attribution. The site SHALL provide two independent switches operable by touch: `河濱站點`, on by default, and `市區站點`, off by default. While `河濱站點` is on, the site SHALL show every station whose `riverside` field is `true` as a clustered marker; while `市區站點` is on, the site SHALL show every station whose `riverside` field is `false` as a clustered marker in a style visually distinct from riverside stations. A switch that is off SHALL remove every marker of its kind, and neither switch SHALL change the other kind's markers. On load the site SHALL fit the initial map view to the bounds of the riverside stations. Turning either switch on or off SHALL NOT clear the selected station, its highlight, its shop list, or its shop markers. The user interface text SHALL be Traditional Chinese.
 
 #### Scenario: Only riverside stations appear on load
 
 - **WHEN** the user opens the site
-- **THEN** only stations with `riverside: true` are shown (clustered at low zoom), the view frames those stations across both cities, the `顯示市區站點` toggle is off, the base map is Esri World Light Gray, and the attribution names Esri and OpenStreetMap
+- **THEN** only stations with `riverside: true` are shown (clustered at low zoom), the view frames those stations across both cities, the `河濱站點` switch is on, the `市區站點` switch is off, the base map is Esri World Light Gray, and the attribution names Esri and OpenStreetMap
 
-##### Example: default visibility
+##### Example: station visibility
 
-- **GIVEN** stations A (`riverside: true`), B (`riverside: true`), C (`riverside: false`)
-- **WHEN** the site finishes loading
-- **THEN** markers for A and B are on the map and no marker for C is on the map
+| 河濱站點 | 市區站點 | Stations A, B (`riverside: true`) | Station C (`riverside: false`) |
+| -------- | -------- | --------------------------------- | ------------------------------ |
+| on | off | shown | hidden |
+| on | on | shown | shown |
+| off | on | hidden | shown |
+| off | off | hidden | hidden |
 
-#### Scenario: Toggle adds urban stations
+#### Scenario: Switches add and remove station kinds
 
-- **WHEN** the user turns on `顯示市區站點`
-- **THEN** non-riverside stations appear in the urban marker style alongside the riverside stations, and turning the toggle off removes them again
+- **WHEN** the user turns on `市區站點`, then turns off `河濱站點`
+- **THEN** non-riverside stations appear in the urban marker style, and then every riverside station marker is removed while the non-riverside markers stay; turning `河濱站點` on again brings the riverside markers back
 
-#### Scenario: Selection survives the toggle
+#### Scenario: Selection survives the switches
 
-- **WHEN** the user turns on `顯示市區站點`, selects a non-riverside station, and then turns the toggle off
-- **THEN** that station stays selected with its highlight, shop list, and shop markers, while the other non-riverside station markers are removed
+- **WHEN** the user selects a riverside station and then turns off `河濱站點`
+- **THEN** that station stays selected with its highlight, shop list, and shop markers, while the other riverside station markers are removed; the same holds for a non-riverside station and the `市區站點` switch
 
 #### Scenario: Data fails to load
 
 - **WHEN** either data file returns a non-200 response
 - **THEN** the site shows the message `資料載入失敗，請重新整理` and does not show an empty map without explanation
+
+
+<!-- @trace
+source: station-switches-and-map-links
+updated: 2026-09-26
+code:
+  - app/components/SupplyMap.client.vue
+  - e2e/helpers.ts
+  - README.md
+  - app/components/ShopList.vue
+  - app/components/MapControls.vue
+  - app/pages/index.vue
+  - app/utils/links.ts
+tests:
+  - e2e/map.spec.ts
+  - app/utils/links.test.ts
+  - app/components/MapControls.test.ts
+-->
+
+---
+### Requirement: Google Maps location link
+
+The popup of every toilet, shower, rain shelter, and route-side vending icon SHALL show, below its existing text, a link labelled `在 Google 地圖開啟`, and the side panel SHALL show the same link under the selected station's name. Each link SHALL open in a new tab the URL `https://www.google.com/maps/search/?api=1&query=<lat>,<lng>` built from that icon's or station's coordinates exactly as they appear in the data, and SHALL NOT request directions. The popup text before the link and the icon titles SHALL stay as specified in the cycling-layer, rain-shelter-layer, and toilet-shower-layers capabilities.
+
+#### Scenario: Facility popup links to its place
+
+- **WHEN** the user selects a toilet icon at (25.07023, 121.50849)
+- **THEN** the popup shows the toilet text followed by `在 Google 地圖開啟`, linking to `https://www.google.com/maps/search/?api=1&query=25.07023,121.50849` in a new tab
+
+#### Scenario: Selected station links to its place
+
+- **WHEN** the user selects a station
+- **THEN** the side panel shows `在 Google 地圖開啟` under the station name, linking to that station's coordinates in a new tab, and selecting another station updates the link
+
+##### Example: generated URL
+
+| Place | lat | lng | URL |
+| ----- | --- | --- | --- |
+| toilet | 25.07023 | 121.50849 | `https://www.google.com/maps/search/?api=1&query=25.07023,121.50849` |
+| station | 25.02605 | 121.5436 | `https://www.google.com/maps/search/?api=1&query=25.02605,121.5436` |
+
+<!-- @trace
+source: station-switches-and-map-links
+updated: 2026-09-26
+code:
+  - app/components/SupplyMap.client.vue
+  - e2e/helpers.ts
+  - README.md
+  - app/components/ShopList.vue
+  - app/components/MapControls.vue
+  - app/pages/index.vue
+  - app/utils/links.ts
+tests:
+  - e2e/map.spec.ts
+  - app/utils/links.test.ts
+  - app/components/MapControls.test.ts
+-->

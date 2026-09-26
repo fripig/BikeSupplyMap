@@ -5,13 +5,14 @@ import { cyclingDashArray, cyclingVisibility, legendEntries, shelterLabel, showe
 import type { CyclingData, FacilityData, RouteData, ShelterData } from '~/utils/load-data'
 import { CATEGORY_COLORS, CATEGORY_LABELS } from '~/utils/categories'
 import { formatDistance } from '~/utils/format'
-import { directionsUrl } from '~/utils/links'
+import { directionsUrl, mapsPlaceUrl } from '~/utils/links'
 
 const props = defineProps<{
   stations: Station[]
   selected: Station | null
   nearby: NearbyShop[]
   radius: number
+  showRiverside: boolean
   showUrban: boolean
   showCycling: boolean
   cycling: CyclingData | null
@@ -34,6 +35,7 @@ let map: LeafletMap | undefined
 let shopLayer: LayerGroup | undefined
 let selectedMarker: Marker | undefined
 let radiusCircle: Circle | undefined
+let riversideLayer: MarkerClusterGroup | undefined
 let urbanLayer: MarkerClusterGroup | undefined
 let bikeRenderer: import('leaflet').Canvas | undefined
 let routeLayer: LayerGroup | undefined
@@ -57,6 +59,10 @@ const FALLBACK_VIEW = { center: [25.0375, 121.5637] as [number, number], zoom: 1
 
 const escapeHtml = (s: string) =>
   s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!)
+
+// Popup for a place icon: its text, then a link showing the place in Google Maps.
+const placePopup = (label: string, place: { lat: number, lng: number }) =>
+  `${escapeHtml(label)}<br><a href="${mapsPlaceUrl(place)}" target="_blank" rel="noopener">在 Google 地圖開啟</a>`
 
 onMounted(async () => {
   L = (await import('leaflet')).default
@@ -83,11 +89,11 @@ onMounted(async () => {
   map.getPane('labels')!.style.pointerEvents = 'none'
   L.tileLayer(`${esri}/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}`, { ...tileOptions, pane: 'labels' }).addTo(map)
 
-  // Riverside stations are always shown; urban stations sit in their own muted
-  // cluster group that the toggle adds or removes without touching the rest.
+  // Riverside and urban stations sit in their own cluster groups, each added or
+  // removed by its switch without touching the rest; urban ones are muted.
   const riversideIcon = L.divIcon({ className: 'station-icon', iconSize: [14, 14] })
   const urbanIcon = L.divIcon({ className: 'station-icon station-icon--urban', iconSize: [10, 10] })
-  const riversideLayer = L.markerClusterGroup({ showCoverageOnHover: false, maxClusterRadius: 50 })
+  riversideLayer = L.markerClusterGroup({ showCoverageOnHover: false, maxClusterRadius: 50 })
   urbanLayer = L.markerClusterGroup({
     showCoverageOnHover: false,
     maxClusterRadius: 50,
@@ -110,7 +116,7 @@ onMounted(async () => {
   if (riverside.length) map.fitBounds(L.latLngBounds(riverside.map((s) => [s.lat, s.lng])), { padding: [16, 16] })
   else map.setView(FALLBACK_VIEW.center, FALLBACK_VIEW.zoom)
   if (props.showUrban) map.addLayer(urbanLayer)
-  map.addLayer(riversideLayer)
+  if (props.showRiverside) map.addLayer(riversideLayer)
   shopLayer = L.layerGroup().addTo(map)
   map.on('zoomend', updateCyclingLayer)
 
@@ -182,7 +188,7 @@ function drawRoutes() {
     L.circleMarker([v.lat, v.lng], {
       renderer: renderer(), radius: 5, weight: 2, color: '#fff', fillColor: CATEGORY_COLORS.vending, fillOpacity: 1,
     })
-      .bindPopup(escapeHtml(vendingLabel(v.name, v.vending)))
+      .bindPopup(placePopup(vendingLabel(v.name, v.vending), v))
       .addTo(vendingLayer)
   }
   // Routes go under the urban paths so the thin green lines stay visible.
@@ -231,7 +237,7 @@ function updateShelterLayer() {
         className: 'shelter-icon', iconSize: [18, 18], html: s.kind === 'bridge' ? '橋' : '亭',
       })
       L.marker([s.lat, s.lng], { icon, zIndexOffset: -1000, title: shelterLabel(s.kind, s.name) })
-        .bindPopup(escapeHtml(shelterLabel(s.kind, s.name)))
+        .bindPopup(placePopup(shelterLabel(s.kind, s.name), s))
         .addTo(shelterLayer)
     }
   }
@@ -243,13 +249,13 @@ function updateShelterLayer() {
 }
 
 // A layer of square glyph icons below the station markers, each titled and
-// opening a popup with its label.
+// opening a popup with its label and Google Maps link.
 function glyphLayer<T extends { lat: number, lng: number }>(items: T[], className: string, glyph: string, label: (item: T) => string) {
   const layer = L.layerGroup()
   const icon = L.divIcon({ className, iconSize: [18, 18], html: glyph })
   for (const item of items) {
     L.marker([item.lat, item.lng], { icon, zIndexOffset: -1000, title: label(item) })
-      .bindPopup(escapeHtml(label(item)))
+      .bindPopup(placePopup(label(item), item))
       .addTo(layer)
   }
   return layer
@@ -318,11 +324,13 @@ watch(() => props.showVending, updateVendingLayer)
 watch(() => [props.showCycling, props.cycling] as const, updateCyclingLayer)
 watch(() => [props.showShelters, props.shelters] as const, updateShelterLayer)
 watch(() => [props.showToilets, props.showShowers, props.facilities] as const, updateFacilityLayers)
-watch(() => props.showUrban, (show) => {
-  if (!map || !urbanLayer) return
-  if (show) map.addLayer(urbanLayer)
-  else map.removeLayer(urbanLayer)
-})
+const toggleLayer = (layer: MarkerClusterGroup | undefined, show: boolean) => {
+  if (!map || !layer) return
+  if (show) map.addLayer(layer)
+  else map.removeLayer(layer)
+}
+watch(() => props.showRiverside, (show) => toggleLayer(riversideLayer, show))
+watch(() => props.showUrban, (show) => toggleLayer(urbanLayer, show))
 watch(() => [props.selected, props.radius] as const, () => {
   if (radiusCircle && map) map.fitBounds(radiusCircle.getBounds(), { padding: [16, 16] })
 }, { flush: 'post' })

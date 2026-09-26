@@ -4,6 +4,7 @@ import { CATEGORIES, CATEGORY_COLORS, CATEGORY_LABELS, RADIUS_OPTIONS } from '~/
 
 const radius = defineModel<number>('radius', { required: true })
 const categories = defineModel<Set<Category>>('categories', { required: true })
+const showRiverside = defineModel<boolean>('showRiverside', { required: true })
 const showUrban = defineModel<boolean>('showUrban', { required: true })
 const showCycling = defineModel<boolean>('showCycling', { required: true })
 const showShelters = defineModel<boolean>('showShelters', { required: true })
@@ -21,9 +22,15 @@ function toggle(category: Category) {
 
 <template>
   <label class="switch">
+    <input v-model="showRiverside" type="checkbox" role="switch">
+    <span class="switch__track" aria-hidden="true" />
+    <span>河濱站點</span>
+  </label>
+
+  <label class="switch">
     <input v-model="showUrban" type="checkbox" role="switch">
     <span class="switch__track" aria-hidden="true" />
-    <span>顯示市區站點</span>
+    <span>市區站點</span>
   </label>
 
   <label class="switch">

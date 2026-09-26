@@ -8,7 +8,7 @@ An optional map overlay showing the urban bike-path network of Taipei City and N
 
 ### Requirement: Urban bike-path layer toggle
 
-The site SHALL provide a toggle labelled `都市自行車道`, on by default and operable by touch. The toggle SHALL be independent of the `顯示市區站點` toggle and SHALL NOT change the station markers, the selected station, or its shop list. The site SHALL request `data/cycling.json` on page load while the toggle is on; if the user turns the toggle off before a load has succeeded, the next turn-on SHALL request it. After a successful load, turning the toggle off and on again SHALL NOT request the file again. If the request fails, the site SHALL show `自行車道資料載入失敗` next to the toggle, turn the toggle off, and leave the rest of the map working; turning it on again SHALL retry.
+The site SHALL provide a toggle labelled `都市自行車道`, on by default and operable by touch. The toggle SHALL be independent of the `河濱站點` and `市區站點` switches and SHALL NOT change the station markers, the selected station, or its shop list. The site SHALL request `data/cycling.json` on page load while the toggle is on; if the user turns the toggle off before a load has succeeded, the next turn-on SHALL request it. After a successful load, turning the toggle off and on again SHALL NOT request the file again. If the request fails, the site SHALL show `自行車道資料載入失敗` next to the toggle, turn the toggle off, and leave the rest of the map working; turning it on again SHALL retry.
 
 #### Scenario: Layer is on at load
 
@@ -24,6 +24,24 @@ The site SHALL provide a toggle labelled `都市自行車道`, on by default and
 
 - **WHEN** `data/cycling.json` loaded successfully and the user turns the toggle off and on
 - **THEN** no further request for `data/cycling.json` is made
+
+
+<!-- @trace
+source: station-switches-and-map-links
+updated: 2026-09-26
+code:
+  - app/components/SupplyMap.client.vue
+  - e2e/helpers.ts
+  - README.md
+  - app/components/ShopList.vue
+  - app/components/MapControls.vue
+  - app/pages/index.vue
+  - app/utils/links.ts
+tests:
+  - e2e/map.spec.ts
+  - app/utils/links.test.ts
+  - app/components/MapControls.test.ts
+-->
 
 ---
 ### Requirement: Urban bike paths are drawn
