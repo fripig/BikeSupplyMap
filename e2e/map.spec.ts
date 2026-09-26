@@ -254,9 +254,9 @@ test('the 廁所 failure message clears once 淋浴 loads facilities.json', asyn
 })
 
 const stationSwitch = (page: Page, label: '河濱站點' | '市區站點') => page.locator('label.switch', { hasText: new RegExp(`^${label}$`) })
-const urbanMarkers = (page: Page) => page.locator('.station-icon--urban, .urban-cluster')
+const urbanMarkers = (page: Page) => page.locator('.station-icon--urban, .station-cluster--urban')
 
-const riversideMarkers = (page: Page) => page.locator('.station-icon:not(.station-icon--urban):not(.station-icon--selected), .marker-cluster')
+const riversideMarkers = (page: Page) => page.locator('.station-icon--riverside, .station-cluster--riverside')
 // The selected station's shop list items and its shop and radius circles.
 const selectionCounts = async (page: Page) => [
   await page.locator('.shop').count(),
@@ -334,4 +334,45 @@ test('the selected station links to its place in Google Maps', async ({ page }) 
     await expect(link).toHaveAttribute('href', mapsPlaceUrl(station))
     await expect(link).toHaveAttribute('target', '_blank')
   }
+})
+
+// Computed size and colors of the first element matching the selector.
+const iconStyle = (page: Page, selector: string) => page.locator(selector).first().evaluate((el) => {
+  const s = getComputedStyle(el)
+  return { outer: (el as HTMLElement).offsetWidth, width: s.width, height: s.height, background: s.backgroundColor, border: `${s.borderTopWidth} ${s.borderTopColor}`, svg: el.querySelectorAll('svg').length }
+})
+
+// Shows an isolated station of the given kind at zoom 18, so it is drawn as a marker.
+async function showLoneStation(page: Page, riverside: boolean) {
+  const stations = await loadStations(page)
+  const station = stations.find((s) => s.riverside === riverside && stations.every((o) => o === s || haversineMeters(s, o) > 60))!
+  await setView(page, [station.lat, station.lng], 18)
+  return station
+}
+
+test('station markers and clusters of both kinds share one style', async ({ page }) => {
+  await stationSwitch(page, '市區站點').click()
+  await setView(page, [25.05, 121.52], 12)
+  await expect(page.locator('.station-cluster--riverside').first()).toBeAttached()
+  await expect(page.locator('.station-cluster--urban').first()).toBeAttached()
+  await expect(page.locator('.marker-cluster')).toHaveCount(0)
+  const riversideCluster = await iconStyle(page, '.station-cluster--riverside')
+  expect(await iconStyle(page, '.station-cluster--urban')).toEqual(riversideCluster)
+  // Icons render at the size Leaflet centres them by, borders included.
+  expect(riversideCluster.outer).toBe(32)
+
+  await showLoneStation(page, true)
+  const riverside = await iconStyle(page, '.station-icon--riverside')
+  expect(riverside.svg).toBe(1)
+  expect(riverside.outer).toBe(18)
+  const urban = await showLoneStation(page, false)
+  expect(await iconStyle(page, '.station-icon--urban')).toEqual(riverside)
+
+  await page.getByTitle(urban.name, { exact: true }).first().click()
+  const selected = await iconStyle(page, '.station-icon--selected')
+  expect(selected.svg).toBe(1)
+  expect(parseFloat(selected.width)).toBeGreaterThan(parseFloat(riverside.width))
+  expect(selected.outer).toBe(26)
+  expect(selected.background).toBe('rgb(230, 119, 0)')
+  expect(riverside.background).toBe('rgb(245, 166, 35)')
 })

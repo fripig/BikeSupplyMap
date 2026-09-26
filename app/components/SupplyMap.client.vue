@@ -54,6 +54,11 @@ const BRIDGE_COLOR = '#ae3ec9'
 const LINK_COLOR = '#9c6644'
 const CYCLING_COLOR = '#2f9e44'
 
+// A white line-drawn bicycle inside every station marker.
+const BIKE_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+  + '<circle cx="6" cy="16" r="4.5"/><circle cx="18" cy="16" r="4.5"/>'
+  + '<path d="M6 16 L10 9 L15 16 L6 16 M10 9 L16 9 M15 16 L18 16 M16 9 L18 16 M9 7 L12 7"/></svg>'
+
 // Shown when there are no riverside stations to frame.
 const FALLBACK_VIEW = { center: [25.0375, 121.5637] as [number, number], zoom: 13 }
 
@@ -90,19 +95,22 @@ onMounted(async () => {
   L.tileLayer(`${esri}/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}`, { ...tileOptions, pane: 'labels' }).addTo(map)
 
   // Riverside and urban stations sit in their own cluster groups, each added or
-  // removed by its switch without touching the rest; urban ones are muted.
-  const riversideIcon = L.divIcon({ className: 'station-icon', iconSize: [14, 14] })
-  const urbanIcon = L.divIcon({ className: 'station-icon station-icon--urban', iconSize: [10, 10] })
-  riversideLayer = L.markerClusterGroup({ showCoverageOnHover: false, maxClusterRadius: 50 })
-  urbanLayer = L.markerClusterGroup({
+  // removed by its switch without touching the rest. Both kinds look the same;
+  // the kind modifier classes carry no style.
+  const stationIcon = (kind: string) => L.divIcon({ className: `station-icon station-icon--${kind}`, iconSize: [18, 18], html: BIKE_SVG })
+  const clusterGroup = (kind: string) => L.markerClusterGroup({
     showCoverageOnHover: false,
     maxClusterRadius: 50,
     iconCreateFunction: (cluster: MarkerCluster) => L.divIcon({
       html: `<span>${cluster.getChildCount()}</span>`,
-      className: 'urban-cluster',
-      iconSize: [30, 30],
+      className: `station-cluster station-cluster--${kind}`,
+      iconSize: [32, 32],
     }),
   })
+  const riversideIcon = stationIcon('riverside')
+  const urbanIcon = stationIcon('urban')
+  riversideLayer = clusterGroup('riverside')
+  urbanLayer = clusterGroup('urban')
   const { riverside, urban } = splitStations(props.stations)
   const addMarkers = (stations: Station[], icon: typeof riversideIcon, layer: MarkerClusterGroup) => {
     for (const station of stations) {
@@ -141,7 +149,7 @@ function drawSelection() {
     radius: props.radius, color: '#e67700', weight: 1, fillOpacity: 0.06, interactive: false,
   }).addTo(map)
   selectedMarker = L.marker([station.lat, station.lng], {
-    icon: L.divIcon({ className: 'station-icon station-icon--selected', iconSize: [22, 22] }),
+    icon: L.divIcon({ className: 'station-icon station-icon--selected', iconSize: [26, 26], html: BIKE_SVG }),
     title: station.name,
     zIndexOffset: 1000,
   }).addTo(map)
@@ -347,10 +355,34 @@ watch(() => [props.selected, props.radius] as const, () => {
 }
 
 .station-icon {
+  display: flex;
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: center;
   background: #f5a623;
   border: 2px solid #fff;
   border-radius: 50%;
   box-shadow: 0 0 0 1px rgb(0 0 0 / 35%);
+  color: #fff;
+}
+
+.station-icon svg {
+  width: 12px;
+  height: 12px;
+}
+
+.station-cluster {
+  display: flex;
+  box-sizing: border-box;
+  align-items: center;
+  justify-content: center;
+  background: #f5a623;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 35%);
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
 }
 
 .facility-icon {
@@ -384,22 +416,6 @@ watch(() => [props.selected, props.radius] as const, () => {
   color: #fff;
   font-size: 11px;
   line-height: 1;
-}
-
-.station-icon--urban {
-  background: #adb5bd;
-  border-width: 1px;
-}
-
-.urban-cluster {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgb(173 181 189 / 75%);
-  border: 2px solid #fff;
-  border-radius: 50%;
-  color: #343a40;
-  font-size: 0.75rem;
 }
 
 .cycling-legend {
@@ -516,5 +532,10 @@ watch(() => [props.selected, props.radius] as const, () => {
   background: #e67700;
   border-width: 3px;
   box-shadow: 0 0 0 2px #e67700, 0 2px 6px rgb(0 0 0 / 40%);
+}
+
+.station-icon--selected svg {
+  width: 16px;
+  height: 16px;
 }
 </style>

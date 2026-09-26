@@ -12,7 +12,7 @@ export default defineNuxtConfig({
       ],
     },
   },
-  css: ['leaflet/dist/leaflet.css', 'leaflet.markercluster/dist/MarkerCluster.css', 'leaflet.markercluster/dist/MarkerCluster.Default.css'],
+  css: ['leaflet/dist/leaflet.css', 'leaflet.markercluster/dist/MarkerCluster.css'],
   nitro: {
     preset: 'github_pages',
   },

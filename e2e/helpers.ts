@@ -31,13 +31,16 @@ export const nextFrames = (page: Page) =>
   page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))))
 
 // Waits until the map is still: selecting a station starts an animated zoom to
-// its range, which would otherwise land after a following setView.
+// its range, which would otherwise land after a following setView, and after a
+// zoom change markercluster moves its markers for about 200 ms (marking the map
+// pane with leaflet-cluster-anim), ignoring map moves and letting clicks land
+// on a marker passing by.
 export async function settleMap(page: Page) {
   // Leaflet starts a zoom animation on the frame after it is requested.
   await nextFrames(page)
   await page.waitForFunction(() => {
     const map = window.__supplyMap as unknown as { _animatingZoom?: boolean, _panAnim?: { _inProgress?: boolean } }
-    return !map._animatingZoom && !map._panAnim?._inProgress
+    return !map._animatingZoom && !map._panAnim?._inProgress && !document.querySelector('.leaflet-cluster-anim')
   })
   await nextFrames(page)
 }
@@ -46,7 +49,7 @@ export async function setView(page: Page, center: LatLng, zoom: number) {
   await page.evaluate(([c, z]) => {
     window.__supplyMap!.setView(c, z, { animate: false })
   }, [center, zoom] as const)
-  await nextFrames(page)
+  await settleMap(page)
 }
 
 // Page coordinates of a map position, for mouse clicks and pixel probes. On
