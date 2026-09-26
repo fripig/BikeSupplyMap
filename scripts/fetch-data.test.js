@@ -72,6 +72,19 @@ const sheltersBody = (bridges = 90, shelters = 90) => ({
   ],
 })
 
+// Toilets and showers along the riverside way at lat 25.03: `toilets` toilets
+// and `showers` sports centres 50 m north of it, spread east along it.
+const facilitiesBody = (toilets = 335, showers = 14) => ({
+  elements: [
+    ...Array.from({ length: toilets }, (_, i) => ({
+      type: 'node', id: 20000 + i, lat: 25.03045, lon: 121.531 + i * 0.0002, tags: { amenity: 'toilets', ...(i === 0 ? { wheelchair: 'yes' } : {}) },
+    })),
+    ...Array.from({ length: showers }, (_, i) => ({
+      type: 'node', id: 30000 + i, lat: 25.03045, lon: 121.531 + i * 0.004, tags: { leisure: 'sports_centre', name: `測試${i}運動中心` },
+    })),
+  ],
+})
+
 // Urban cycling layer: n short cycleways along lat 25.2, and m signals on the first one.
 const cyclingBody = (n, m) => ({
   elements: [
@@ -100,6 +113,7 @@ beforeAll(async () => {
       : query.includes('"route"="bicycle"') ? '/routes'
         : query.includes('"highway"="cycleway"') ? '/cycling'
           : query.includes('"amenity"="shelter"') ? '/shelters'
+            : query.includes('"amenity"="toilets"') ? '/facilities'
           : url.pathname
     const [status, body] = responses[route](url)
     res.writeHead(status, { 'Content-Type': 'application/json' })
@@ -118,6 +132,7 @@ const SEED = {
   'cycling.json': '{"paths":[],"points":[]}\n',
   'routes.json': '{"routes":[]}\n',
   'shelters.json': '{"shelters":[]}\n',
+  'facilities.json': '{"toilets":[],"showers":[]}\n',
   'meta.json': '{"generatedAt":"2026-01-01T00:00:00.000Z"}\n',
 }
 
@@ -129,6 +144,7 @@ beforeEach(async () => {
     '/routes': () => [200, routesBody(21)],
     '/cycling': () => [200, cyclingBody(1000, 2000)],
     '/shelters': () => [200, sheltersBody()],
+    '/facilities': () => [200, facilitiesBody()],
   }
   const root = await mkdtemp(join(tmpdir(), 'fetch-data-test-'))
   dataDir = join(root, 'data')
@@ -330,6 +346,36 @@ describe('fetch-data', () => {
     expect(shelters[90]).toEqual({ kind: 'shelter', name: null, lat: 25.0302, lng: 121.531 })
     expect(data['shelters.json'].split('\n')[1]).toBe(JSON.stringify(shelters[0]) + ',')
     expect(JSON.parse(data['meta.json']).counts.shelters).toEqual({ bridge: 90, shelter: 90 })
+  })
+
+  it('writes toilets and showers and reports their counts', async () => {
+    const { code, stdout } = await run()
+    expect(code).toBe(0)
+    expect(stdout).toContain('toilets: 335, showers: 14')
+    const data = await readData()
+    const { toilets, showers } = JSON.parse(data['facilities.json'])
+    expect(toilets).toHaveLength(335)
+    expect(toilets[0]).toEqual({ name: null, wheelchair: 'yes', changing_table: null, unisex: null, fee: null, lat: 25.03045, lng: 121.531 })
+    expect(showers[0]).toEqual({ kind: 'sports_centre', name: '測試0運動中心', fee: null, lat: 25.03045, lng: 121.531 })
+    expect(data['facilities.json'].split('\n')[1]).toBe(JSON.stringify(toilets[0]) + ',')
+    const { counts } = JSON.parse(data['meta.json'])
+    expect([counts.toilets, counts.showers]).toEqual([335, 14])
+  })
+
+  it('rejects too few riverside toilets and keeps previous data', async () => {
+    responses['/facilities'] = () => [200, facilitiesBody(120, 14)]
+    const { code, stderr } = await run()
+    expect(code).not.toBe(0)
+    expect(stderr).toContain('riverside toilets: got 120, expected at least 150')
+    expect(await readData()).toEqual(SEED)
+  })
+
+  it('keeps previous data when the facility query fails', async () => {
+    responses['/facilities'] = () => [504, '<html>error</html>']
+    const { code, stderr } = await run()
+    expect(code).not.toBe(0)
+    expect(stderr).toContain('HTTP 504')
+    expect(await readData()).toEqual(SEED)
   })
 
   it('rejects too few bridge shelter spots and keeps previous data', async () => {

@@ -10,6 +10,7 @@ import { BRIDGE_SUPPLEMENTS, supplementClauses } from './lib/bridge-supplements.
 import { LOOP_ROUTES } from './lib/loop-routes.js'
 import { buildRoutes, routeVending } from './lib/routes.js'
 import { bridgeSpots, shelterSpots } from './lib/shelters.js'
+import { showerSpots, toiletSpots } from './lib/facilities.js'
 import { fetchAllPages } from './lib/paginate.js'
 
 // Source URLs and the output directory can be overridden by environment
@@ -78,6 +79,16 @@ out geom tags;
 (
   nwr["amenity"="shelter"](area.a);
   nwr["building"="roof"](area.a);
+);
+out center tags;`
+// Toilets, showers and sports centres; lib/facilities.js keeps those along
+// riverside routes.
+const FACILITIES_QUERY = `[out:json][timeout:170];
+${OVERPASS_AREA}
+(
+  nwr["amenity"="toilets"](area.a);
+  nwr["amenity"="shower"](area.a);
+  nwr["leisure"="sports_centre"]["name"~"運動中心"](area.a);
 );
 out center tags;`
 
@@ -168,6 +179,11 @@ async function fetchCyclingLayer(riversideWayIds) {
   return buildCyclingLayer(await fetchOverpass(CYCLING_QUERY), riversideWayIds)
 }
 
+async function fetchFacilities(routes) {
+  const { elements } = await fetchOverpass(FACILITIES_QUERY)
+  return { toilets: toiletSpots(routes, elements), showers: showerSpots(routes, elements) }
+}
+
 async function fetchShelters(routes) {
   const { elements } = await fetchOverpass(SHELTERS_QUERY)
   return [...bridgeSpots(routes, elements.filter((e) => e.type === 'way' && e.geometry)), ...shelterSpots(routes, elements)]
@@ -180,6 +196,7 @@ const byId = (a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
 const toJsonLines = (items) => `[\n${items.map((i) => JSON.stringify(i)).join(',\n')}\n]\n`
 const jsonLines = (items) => items.map((i) => JSON.stringify(i)).join(',\n')
 const cyclingJson = ({ paths, points }) => `{"paths":[\n${jsonLines(paths)}\n],"points":[\n${jsonLines(points)}\n]}\n`
+const facilitiesJson = ({ toilets, showers }) => `{"toilets":[\n${jsonLines(toilets)}\n],"showers":[\n${jsonLines(showers)}\n]}\n`
 const sheltersJson = (shelters) => `{"shelters":[\n${jsonLines(shelters)}\n]}\n`
 const routesJson = (routes, vending) => `{"routes":[\n${jsonLines(routes)}\n],"vending":[\n${jsonLines(vending)}\n]}\n`
 
@@ -201,16 +218,17 @@ async function writeAllOrNothing(files) {
 async function main() {
   // The Overpass queries run one after the other so a public instance never
   // sees two heavy requests from us at once; the cycling layer also needs the
-  // riverside route ways to leave them out, and the rain shelters need the
-  // riverside route lines.
-  const [taipei, newTaipei, [shops, { riverside, routes, missingSupplements, missingLoops }, cycling, shelters]] = await Promise.all([
+  // riverside route ways to leave them out, and the rain shelters and the
+  // toilets and showers need the riverside route lines.
+  const [taipei, newTaipei, [shops, { riverside, routes, missingSupplements, missingLoops }, cycling, shelters, facilities]] = await Promise.all([
     fetchTaipeiStations(),
     fetchNewTaipeiStations(),
     (async () => {
       const shops = await fetchShops()
       const bikeRoutes = await fetchBikeRoutes()
       const cycling = await fetchCyclingLayer(bikeRoutes.riverside.wayIds)
-      return [shops, bikeRoutes, cycling, await fetchShelters(bikeRoutes.routes)]
+      const shelters = await fetchShelters(bikeRoutes.routes)
+      return [shops, bikeRoutes, cycling, shelters, await fetchFacilities(bikeRoutes.routes)]
     })(),
   ])
 
@@ -242,6 +260,8 @@ async function main() {
       bridgeRoutes,
       routeVending: vending.length,
       shelters: shelterCounts,
+      toilets: facilities.toilets.length,
+      showers: facilities.showers.length,
     },
   }
 
@@ -257,6 +277,8 @@ async function main() {
     bridgeRoutes,
     bridgeShelters: shelterCounts.bridge,
     shelters: shelterCounts.shelter,
+    toilets: facilities.toilets.length,
+    showers: facilities.showers.length,
   })
   for (const name of missingSupplements) problems.push(`supplementary bridge ${name}: no way matches its name, highway and bridge=yes`)
   for (const name of missingLoops) problems.push(`loop route ${name}: no relation with this name, or no way left outside riverside and bridge routes`)
@@ -269,6 +291,7 @@ async function main() {
     'cycling.json': cyclingJson(cycling),
     'routes.json': routesJson(routes, vending),
     'shelters.json': sheltersJson(shelters),
+    'facilities.json': facilitiesJson(facilities),
     'meta.json': `${JSON.stringify(meta, null, 2)}\n`,
   })
 
@@ -276,6 +299,7 @@ async function main() {
   console.log(`riverside: ${riverside.routes.length} routes, ${riversideStations} stations`)
   console.log(`routes: ${routes.filter((r) => r.kind === 'riverside').length} riverside, ${bridgeRoutes} bridge, ${supplementLabels.size} supplementary bridge, ${routes.filter((r) => r.kind === 'link').length} link`)
   console.log(`route-side vending: ${vending.length}`)
+  console.log(`toilets: ${facilities.toilets.length}, showers: ${facilities.showers.length}`)
   console.log(`rain shelters: ${shelterCounts.bridge} under bridges, ${shelterCounts.shelter} shelters`)
   console.log(`cycling: ${cycling.includedWays} ways joined into ${cycling.paths.length} paths, ${cycling.points.length} signals and crossings`)
   console.log(`shops: ${Object.entries(shopCounts).map(([k, v]) => `${k} ${v}`).join(', ')}`)

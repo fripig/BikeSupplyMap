@@ -1,7 +1,7 @@
 import { expect, test, type Page } from '@playwright/test'
-import { shelterLabel, vendingLabel } from '../app/utils/cycling'
+import { shelterLabel, toiletLabel, vendingLabel } from '../app/utils/cycling'
 import { haversineMeters } from '../app/utils/geo'
-import type { RouteVending, ShelterData } from '../app/utils/load-data'
+import type { FacilityData, RouteVending, ShelterData } from '../app/utils/load-data'
 import { isVendingTeal, loadRoutes, loadStations, nextFrames, openMap, setView, toPagePoint, type LatLng } from './helpers'
 
 const legend = (page: Page) => page.locator('.cycling-legend')
@@ -9,6 +9,11 @@ const vendingChip = (page: Page) => page.getByRole('button', { name: '自動販�
 // The switch input is visually hidden; its label takes the click.
 const shelterSwitch = (page: Page) => page.locator('label.switch', { hasText: '躲雨點' })
 const shelterIcons = (page: Page) => page.locator('.shelter-icon')
+const facilitySwitch = (page: Page, label: '廁所' | '淋浴') => page.locator('label.switch', { hasText: new RegExp(`^${label}$`) })
+const toiletIcons = (page: Page) => page.locator('.facility-icon--toilet')
+const showerIcons = (page: Page) => page.locator('.facility-icon--shower')
+const facilityRequests = (page: Page) => page.evaluate(() =>
+  performance.getEntriesByType('resource').filter((e) => e.name.endsWith('/data/facilities.json')).length)
 
 async function vendingDrawnAt(page: Page, at: LatLng) {
   await nextFrames(page)
@@ -162,4 +167,65 @@ test('a station marker overlapping a shelter icon stays selectable', async ({ pa
   if (!overlap) throw new Error(`no shelter icon overlaps the ${station.name} marker at zoom 17`)
   await page.mouse.click(overlap.x, overlap.y)
   await expect(page.locator('.station-name')).toHaveText(station.name)
+})
+
+test('toilets and showers load once, only when a switch is turned on, and follow their own switch', async ({ page }) => {
+  expect(await facilityRequests(page)).toBe(0)
+  await expect(toiletIcons(page)).toHaveCount(0)
+
+  await facilitySwitch(page, '廁所').click()
+  await expect(legend(page)).toContainText('廁所')
+  expect(await toiletIcons(page).count()).toBeGreaterThan(0)
+  await expect(showerIcons(page)).toHaveCount(0)
+  await expect(legend(page)).not.toContainText('淋浴')
+
+  await facilitySwitch(page, '淋浴').click()
+  await expect(legend(page)).toContainText('淋浴')
+  expect(await showerIcons(page).count()).toBeGreaterThan(0)
+  expect(await facilityRequests(page)).toBe(1)
+
+  await facilitySwitch(page, '廁所').click()
+  await expect(toiletIcons(page)).toHaveCount(0)
+  await expect(legend(page)).not.toContainText('廁所')
+  expect(await showerIcons(page).count()).toBeGreaterThan(0)
+})
+
+test('a toilet icon shows its name and tagged attributes', async ({ page }) => {
+  const { toilets } = await (await page.request.get('data/facilities.json')).json() as FacilityData
+  // A toilet with a tagged attribute and no riverside station or other toilet
+  // close enough to cover its icon.
+  const riverside = (await loadStations(page)).filter((s) => s.riverside)
+  const toilet = toilets.find((t) => t.wheelchair === 'yes'
+    && riverside.every((st) => haversineMeters(st, t) > 40)
+    && toilets.every((o) => o === t || haversineMeters(o, t) > 40))
+  if (!toilet) throw new Error('facilities.json has no wheelchair toilet clear of stations and other toilets')
+  await facilitySwitch(page, '廁所').click()
+  await setView(page, [toilet.lat, toilet.lng], 17)
+  const label = toiletLabel(toilet)
+  await page.getByTitle(label, { exact: true }).first().click()
+  await expect(page.locator('.leaflet-popup-content')).toHaveText(label)
+})
+
+test('a failed facilities.json load shows a message under 廁所 and leaves stations working', async ({ page }) => {
+  await page.route('**/data/facilities.json', (route) => route.fulfill({ status: 404, body: 'not found' }))
+  await facilitySwitch(page, '廁所').click()
+  await expect(page.getByRole('alert').filter({ hasText: '廁所資料載入失敗' })).toBeVisible()
+  await expect(page.getByRole('switch', { name: '廁所' })).not.toBeChecked()
+  await expect(page.getByRole('switch', { name: '淋浴' })).not.toBeChecked()
+  await expect(page.getByText('淋浴資料載入失敗')).toHaveCount(0)
+  const riverside = (await loadStations(page)).filter((s) => s.riverside)
+  const station = riverside.find((s) => riverside.every((o) => o === s || haversineMeters(s, o) > 40))!
+  await setView(page, [station.lat, station.lng], 18)
+  await page.getByTitle(station.name, { exact: true }).first().click()
+  await expect(page.locator('.station-name')).toHaveText(station.name)
+})
+
+test('the 廁所 failure message clears once 淋浴 loads facilities.json', async ({ page }) => {
+  await page.route('**/data/facilities.json', (route) => route.fulfill({ status: 404, body: 'not found' }))
+  await facilitySwitch(page, '廁所').click()
+  await expect(page.getByRole('alert').filter({ hasText: '廁所資料載入失敗' })).toBeVisible()
+  await page.unroute('**/data/facilities.json')
+  await facilitySwitch(page, '淋浴').click()
+  await expect(showerIcons(page).first()).toBeAttached()
+  await expect(page.getByText('廁所資料載入失敗')).toHaveCount(0)
 })

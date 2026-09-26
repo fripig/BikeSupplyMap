@@ -1,14 +1,14 @@
 {
-  "generatedAt": "2026-09-25T15:29:45.062Z",
+  "generatedAt": "2026-09-25T17:34:24.661Z",
   "counts": {
     "stations": 3366,
     "riversideStations": 326,
     "shops": {
-      "convenience": 3791,
-      "supermarket": 777,
-      "hypermarket": 47,
-      "grocery": 445,
-      "vending": 186
+      "convenience": 3743,
+      "supermarket": 762,
+      "hypermarket": 52,
+      "grocery": 441,
+      "vending": 184
     },
     "cyclingPaths": 1303,
     "cyclingPoints": 3907,
@@ -17,6 +17,8 @@
     "shelters": {
       "bridge": 157,
       "shelter": 175
-    }
+    },
+    "toilets": 335,
+    "showers": 14
   }
 }

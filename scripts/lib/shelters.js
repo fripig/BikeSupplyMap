@@ -16,11 +16,19 @@ const BRIDGE_RAILWAYS = new Set(['rail', 'subway', 'light_rail'])
 export const isShelterBridge = (tags = {}) =>
   tags.bridge === 'yes' && (BRIDGE_HIGHWAYS.has(tags.highway) || BRIDGE_RAILWAYS.has(tags.railway))
 
-const round5 = (n) => Math.round(n * 1e5) / 1e5
+export const round5 = (n) => Math.round(n * 1e5) / 1e5
+
+// An Overpass element's point: a node's position or a way or relation's center,
+// or null when the response carries neither.
+export function elementPoint(element) {
+  const lat = element.lat ?? element.center?.lat
+  const lng = element.lon ?? element.center?.lon
+  return lat === undefined || lng === undefined ? null : { lat, lng }
+}
 const GRID = 100 // cells of 0.01°
 
 // Segments of riverside route lines as [{lat, lng}, {lat, lng}] pairs.
-const riversideSegments = (routes) => routes
+export const riversideRouteSegments = (routes) => routes
   .filter((r) => r.kind === 'riverside')
   .flatMap((r) => r.lines.flatMap((line) =>
     line.slice(1).map(([lat, lng], i) => [{ lat: line[i][0], lng: line[i][1] }, { lat, lng }])))
@@ -49,7 +57,7 @@ function crossing(a, b, c, d) {
 // along each way; one within BRIDGE_SPOT_MERGE_METERS of a kept spot joins it,
 // and a spot is named after the first named way among its crossings.
 export function bridgeSpots(routes, bridgeWays) {
-  const segments = riversideSegments(routes)
+  const segments = riversideRouteSegments(routes)
   const grid = new Map()
   segments.forEach(([a, b], i) => {
     for (const cell of cells(a, b)) {
@@ -89,16 +97,15 @@ const isShelter = (tags = {}) =>
 // Shelters (other than bus shelters) and roofs whose point lies within
 // SHELTER_NEAR_METERS of a riverside route line, sorted by shop-style id.
 export function shelterSpots(routes, elements) {
-  const segments = riversideSegments(routes)
+  const segments = riversideRouteSegments(routes)
   const byId = new Map()
   for (const e of elements) {
     if (!isShelter(e.tags)) continue
-    const lat = e.lat ?? e.center?.lat
-    const lng = e.lon ?? e.center?.lon
-    if (lat === undefined || lng === undefined) continue
+    const point = elementPoint(e)
+    if (!point) continue
     const id = `${e.type[0]}${e.id}`
-    if (byId.has(id) || !isNearSegments({ lat, lng }, segments, SHELTER_NEAR_METERS)) continue
-    byId.set(id, { kind: 'shelter', name: e.tags.name ?? null, lat: round5(lat), lng: round5(lng) })
+    if (byId.has(id) || !isNearSegments(point, segments, SHELTER_NEAR_METERS)) continue
+    byId.set(id, { kind: 'shelter', name: e.tags.name ?? null, lat: round5(point.lat), lng: round5(point.lng) })
   }
   return [...byId.keys()].sort().map((id) => byId.get(id))
 }

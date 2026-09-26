@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import type { Circle, Control, LayerGroup, Map as LeafletMap, Marker, MarkerCluster, MarkerClusterGroup } from 'leaflet'
 import { splitStations, type NearbyShop, type Station } from '~/utils/geo'
-import { cyclingDashArray, cyclingVisibility, legendEntries, shelterLabel, vendingLabel } from '~/utils/cycling'
-import type { CyclingData, RouteData, ShelterData } from '~/utils/load-data'
+import { cyclingDashArray, cyclingVisibility, legendEntries, shelterLabel, showerLabel, toiletLabel, vendingLabel } from '~/utils/cycling'
+import type { CyclingData, FacilityData, RouteData, ShelterData } from '~/utils/load-data'
 import { CATEGORY_COLORS, CATEGORY_LABELS } from '~/utils/categories'
 import { formatDistance } from '~/utils/format'
 import { directionsUrl } from '~/utils/links'
@@ -19,6 +19,9 @@ const props = defineProps<{
   showVending: boolean
   showShelters: boolean
   shelters: ShelterData | null
+  showToilets: boolean
+  showShowers: boolean
+  facilities: FacilityData | null
 }>()
 
 const emit = defineEmits<{
@@ -36,6 +39,8 @@ let bikeRenderer: import('leaflet').Canvas | undefined
 let routeLayer: LayerGroup | undefined
 let vendingLayer: LayerGroup | undefined
 let shelterLayer: LayerGroup | undefined
+let toiletLayer: LayerGroup | undefined
+let showerLayer: LayerGroup | undefined
 let cyclingPaths: LayerGroup | undefined
 let cyclingPoints: LayerGroup | undefined
 let legend: Control | undefined
@@ -113,6 +118,7 @@ onMounted(async () => {
   drawRoutes()
   updateCyclingLayer()
   updateShelterLayer()
+  updateFacilityLayers()
 })
 
 onBeforeUnmount(() => map?.remove())
@@ -236,13 +242,49 @@ function updateShelterLayer() {
   updateLegend()
 }
 
-// The legend lists route entries while routes are drawn, shelter entries while
-// shelters are shown and urban entries while the urban layer is on; it is
-// hidden when none is shown.
+// A layer of square glyph icons below the station markers, each titled and
+// opening a popup with its label.
+function glyphLayer<T extends { lat: number, lng: number }>(items: T[], className: string, glyph: string, label: (item: T) => string) {
+  const layer = L.layerGroup()
+  const icon = L.divIcon({ className, iconSize: [18, 18], html: glyph })
+  for (const item of items) {
+    L.marker([item.lat, item.lng], { icon, zIndexOffset: -1000, title: label(item) })
+      .bindPopup(escapeHtml(label(item)))
+      .addTo(layer)
+  }
+  return layer
+}
+
+// Toilets and showers are built once facilities.json arrives, then each layer
+// follows its own switch.
+function updateFacilityLayers() {
+  if (!map) return
+  if (!toiletLayer && props.facilities) {
+    toiletLayer = glyphLayer(props.facilities.toilets, 'facility-icon facility-icon--toilet', '廁', toiletLabel)
+    showerLayer = glyphLayer(props.facilities.showers, 'facility-icon facility-icon--shower', '浴', showerLabel)
+  }
+  for (const [layer, show] of [[toiletLayer, props.showToilets], [showerLayer, props.showShowers]] as const) {
+    if (!layer) continue
+    if (show) map.addLayer(layer)
+    else map.removeLayer(layer)
+  }
+  updateLegend()
+}
+
+// The legend lists route entries while routes are drawn, shelter, toilet and
+// shower entries while those layers are shown, and urban entries while the
+// urban layer is on; it is hidden when none is shown.
 function updateLegend() {
   if (!map) return
   const sheltersShown = !!shelterLayer && map.hasLayer(shelterLayer)
-  const entries = legendEntries(!!routeLayer, !!cyclingPaths && map.hasLayer(cyclingPaths), props.showVending, sheltersShown)
+  const entries = legendEntries({
+    routes: !!routeLayer,
+    urban: !!cyclingPaths && map.hasLayer(cyclingPaths),
+    vending: props.showVending,
+    shelters: sheltersShown,
+    toilets: !!toiletLayer && map.hasLayer(toiletLayer),
+    showers: !!showerLayer && map.hasLayer(showerLayer),
+  })
     .map(({ label, icon }) => `<span><i class="cycling-legend__${icon}"></i>${label}</span>`)
   if (!legend) {
     legend = new L.Control({ position: 'bottomleft' })
@@ -275,6 +317,7 @@ watch(() => props.routes, drawRoutes)
 watch(() => props.showVending, updateVendingLayer)
 watch(() => [props.showCycling, props.cycling] as const, updateCyclingLayer)
 watch(() => [props.showShelters, props.shelters] as const, updateShelterLayer)
+watch(() => [props.showToilets, props.showShowers, props.facilities] as const, updateFacilityLayers)
 watch(() => props.showUrban, (show) => {
   if (!map || !urbanLayer) return
   if (show) map.addLayer(urbanLayer)
@@ -300,6 +343,26 @@ watch(() => [props.selected, props.radius] as const, () => {
   border: 2px solid #fff;
   border-radius: 50%;
   box-shadow: 0 0 0 1px rgb(0 0 0 / 35%);
+}
+
+.facility-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #fff;
+  border-radius: 4px;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 35%);
+  color: #fff;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.facility-icon--toilet {
+  background: #364fc7;
+}
+
+.facility-icon--shower {
+  background: #c2255c;
 }
 
 .shelter-icon {
@@ -393,6 +456,22 @@ watch(() => [props.selected, props.radius] as const, () => {
 
 .cycling-legend__glyph--shelter::after {
   content: "亭";
+}
+
+.cycling-legend__glyph--toilet {
+  background: #364fc7;
+}
+
+.cycling-legend__glyph--toilet::after {
+  content: "廁";
+}
+
+.cycling-legend__glyph--shower {
+  background: #c2255c;
+}
+
+.cycling-legend__glyph--shower::after {
+  content: "浴";
 }
 
 .cycling-legend__line--lane {

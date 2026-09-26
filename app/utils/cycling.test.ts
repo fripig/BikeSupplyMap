@@ -1,6 +1,8 @@
 import { nextTick } from 'vue'
 import { describe, expect, it, vi } from 'vitest'
-import { cyclingDashArray, cyclingVisibility, legendEntries, shelterLabel, useCyclingToggle, useLazyToggle, useRouteData, vendingLabel } from './cycling'
+import { cyclingDashArray, cyclingVisibility, legendEntries, shelterLabel, showerLabel, toiletLabel, useCyclingToggle, useLazyToggle, useRouteData, vendingLabel } from './cycling'
+import type { LegendFlags } from './cycling'
+import { createJsonLoader } from './load-data'
 
 const layer = { paths: [], points: [] }
 const flush = async () => {
@@ -133,24 +135,75 @@ describe('useLazyToggle starting off', () => {
   })
 })
 
+describe('two switches sharing one loader', () => {
+  it('fetches the shared file once across on and off of both switches', async () => {
+    const data = { toilets: [], showers: [] }
+    const fetchFn = vi.fn(async () => ({ ok: true, status: 200, json: async () => data }))
+    const load = createJsonLoader(fetchFn, '/BikeSupplyMap/', 'facilities.json')
+    const toilets = useLazyToggle(load, false)
+    const showers = useLazyToggle(load, false)
+    await toilets.start()
+    await showers.start()
+    expect(fetchFn).not.toHaveBeenCalled()
+    toilets.show.value = true
+    showers.show.value = true
+    await flush()
+    toilets.show.value = false
+    showers.show.value = false
+    await flush()
+    toilets.show.value = true
+    showers.show.value = true
+    await flush()
+    expect(fetchFn).toHaveBeenCalledTimes(1)
+    expect(toilets.data.value).toBe(data)
+    expect(showers.data.value).toBe(data)
+  })
+})
+
 describe('legendEntries', () => {
-  const labels = (routes: boolean, vending: boolean, shelters: boolean, urban: boolean) =>
-    legendEntries(routes, urban, vending, shelters).map((e) => e.label)
   const ROUTES = ['河濱自行車道', '橋梁自行車道', '連接道路']
   const URBAN = ['自行車道', '自行車道（畫線）', '紅綠燈', '穿越道']
   const SHELTERS = ['橋下躲雨點', '涼亭躲雨點']
+  const on = (...keys: string[]) => Object.fromEntries(
+    ['routes', 'urban', 'vending', 'shelters', 'toilets', 'showers'].map((k) => [k, keys.includes(k)]),
+  ) as unknown as LegendFlags
 
   it.each([
-    [true, true, false, true, [...ROUTES, '自動販賣機', ...URBAN]],
-    [true, true, true, true, [...ROUTES, '自動販賣機', ...SHELTERS, ...URBAN]],
-    [true, true, false, false, [...ROUTES, '自動販賣機']],
-    [true, false, true, false, [...ROUTES, ...SHELTERS]],
-    [true, false, false, false, ROUTES],
-    [false, true, false, true, URBAN],
-    [false, true, true, false, SHELTERS],
-    [false, true, false, false, []],
-  ])('routes drawn=%s, vending on=%s, shelters on=%s, urban on=%s', (routes, vending, shelters, urban, expected) => {
-    expect(labels(routes, vending, shelters, urban)).toEqual(expected)
+    [on('routes', 'vending', 'urban'), [...ROUTES, '自動販賣機', ...URBAN]],
+    [on('routes', 'vending', 'shelters', 'toilets', 'showers', 'urban'), [...ROUTES, '自動販賣機', ...SHELTERS, '廁所', '淋浴', ...URBAN]],
+    [on('routes', 'vending'), [...ROUTES, '自動販賣機']],
+    [on('routes', 'shelters'), [...ROUTES, ...SHELTERS]],
+    [on('routes', 'toilets'), [...ROUTES, '廁所']],
+    [on('routes', 'showers'), [...ROUTES, '淋浴']],
+    [on('routes'), ROUTES],
+    [on('vending', 'urban'), URBAN],
+    [on('vending', 'shelters'), SHELTERS],
+    [on('vending', 'toilets', 'showers'), ['廁所', '淋浴']],
+    [on('vending'), []],
+  ])('%o', (flags, expected) => {
+    expect(legendEntries(flags).map((e) => e.label)).toEqual(expected)
+  })
+})
+
+describe('toiletLabel', () => {
+  const NONE = { name: null, wheelchair: null, changing_table: null, unisex: null, fee: null }
+  it.each([
+    [{ ...NONE, wheelchair: 'yes', changing_table: 'yes', fee: 'no' }, '公廁 · 無障礙、尿布台、免費'],
+    [{ ...NONE, name: '美堤公廁', wheelchair: 'limited', unisex: 'yes' }, '美堤公廁 · 部分無障礙、性別友善'],
+    [NONE, '公廁'],
+    [{ ...NONE, wheelchair: 'no', fee: 'yes' }, '公廁 · 收費'],
+  ])('%o → %s', (toilet, expected) => {
+    expect(toiletLabel(toilet)).toBe(expected)
+  })
+})
+
+describe('showerLabel', () => {
+  it.each([
+    [{ kind: 'sports_centre', name: '萬華運動中心', fee: null }, '萬華運動中心 · 淋浴間（可能收費）'],
+    [{ kind: 'shower', name: null, fee: 'no' }, '淋浴間 · 免費'],
+    [{ kind: 'shower', name: null, fee: null }, '淋浴間'],
+  ] as const)('%o → %s', (shower, expected) => {
+    expect(showerLabel(shower)).toBe(expected)
   })
 })
 

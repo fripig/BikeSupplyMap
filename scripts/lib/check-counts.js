@@ -10,6 +10,8 @@ export const MINIMUMS = {
   bridgeRoutes: 10,
   bridgeShelters: 80,
   shelters: 80,
+  toilets: 150,
+  showers: 5,
 }
 
 const LABELS = {
@@ -24,6 +26,8 @@ const LABELS = {
   bridgeRoutes: 'bridge bike routes',
   bridgeShelters: 'bridge shelter spots',
   shelters: 'shelter spots',
+  toilets: 'riverside toilets',
+  showers: 'riverside showers',
 }
 
 // Returns one message per source whose count is below its minimum; empty means OK.

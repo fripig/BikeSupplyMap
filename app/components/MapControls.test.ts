@@ -11,9 +11,13 @@ const mountControls = (showUrban: boolean, extra: Record<string, unknown> = {}) 
     showUrban,
     showCycling: false,
     showShelters: false,
+    showToilets: false,
+    showShowers: false,
     'onUpdate:showUrban': () => {},
     'onUpdate:showCycling': () => {},
     'onUpdate:showShelters': () => {},
+    'onUpdate:showToilets': () => {},
+    'onUpdate:showShowers': () => {},
     ...extra,
   },
 })
@@ -64,5 +68,24 @@ describe('MapControls rain shelter switch', () => {
   it('shows the load failure message only when loading failed', () => {
     expect(mountControls(false).text()).not.toContain('躲雨點資料載入失敗')
     expect(mountControls(false, { shelterFailed: true }).text()).toContain('躲雨點資料載入失敗')
+  })
+})
+
+describe.each([
+  ['廁所', 'showToilets', 'toiletFailed', '廁所資料載入失敗'],
+  ['淋浴', 'showShowers', 'showerFailed', '淋浴資料載入失敗'],
+])('MapControls %s switch', (label, model, failedProp, message) => {
+  it('starts off and emits when toggled', async () => {
+    const wrapper = mountControls(false)
+    const input = switchLabelled(wrapper, label).find<HTMLInputElement>('input')
+    expect(input.attributes('role')).toBe('switch')
+    expect(input.element.checked).toBe(false)
+    await input.setValue(true)
+    expect(wrapper.emitted(`update:${model}`)).toEqual([[true]])
+  })
+
+  it('shows its load failure message only when loading failed', () => {
+    expect(mountControls(false).text()).not.toContain(message)
+    expect(mountControls(false, { [failedProp]: true }).text()).toContain(message)
   })
 })

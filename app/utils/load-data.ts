@@ -67,6 +67,32 @@ export interface ShelterData {
   shelters: Shelter[]
 }
 
+// A toilet near a riverside route, with its raw OSM tag values (null when untagged).
+export interface Toilet {
+  name: string | null
+  wheelchair: string | null
+  changing_table: string | null
+  unisex: string | null
+  fee: string | null
+  lat: number
+  lng: number
+}
+
+// A shower near a riverside route: an OSM shower, or a sports centre named with
+// 運動中心, whose showers are usually paid.
+export interface Shower {
+  kind: 'shower' | 'sports_centre'
+  name: string | null
+  fee: string | null
+  lat: number
+  lng: number
+}
+
+export interface FacilityData {
+  toilets: Toilet[]
+  showers: Shower[]
+}
+
 export interface BikeRoute {
   kind: 'riverside' | 'bridge' | 'link'
   name: string

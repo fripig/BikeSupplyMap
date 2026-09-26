@@ -3,7 +3,7 @@ import { nearbyShops, type Category, type Shop, type Station } from '~/utils/geo
 import { CATEGORIES, DEFAULT_RADIUS } from '~/utils/categories'
 import { formatDataDate } from '~/utils/format'
 import { useCyclingToggle, useLazyToggle, useRouteData } from '~/utils/cycling'
-import { createCyclingLoader, createJsonLoader, loadJson, loadRoutes, loadSupplyData, type ShelterData } from '~/utils/load-data'
+import { createCyclingLoader, createJsonLoader, loadJson, loadRoutes, loadSupplyData, type FacilityData, type ShelterData } from '~/utils/load-data'
 
 const { app } = useRuntimeConfig()
 
@@ -31,6 +31,25 @@ const {
   failed: shelterFailed,
   start: startShelters,
 } = useLazyToggle(createJsonLoader<ShelterData>(fetch, app.baseURL, 'shelters.json'), false)
+// Toilets and showers are off at first and share facilities.json: the first
+// switch turned on fetches it, and the other reuses that load.
+const loadFacilities = createJsonLoader<FacilityData>(fetch, app.baseURL, 'facilities.json')
+const {
+  show: showToilets,
+  data: toiletData,
+  failed: toiletFailed,
+  start: startToilets,
+} = useLazyToggle(loadFacilities, false)
+const {
+  show: showShowers,
+  data: showerData,
+  failed: showerFailed,
+  start: startShowers,
+} = useLazyToggle(loadFacilities, false)
+const facilities = computed(() => toiletData.value ?? showerData.value)
+// Either switch's successful load settles an earlier failure of the other.
+const toiletLoadFailed = computed(() => toiletFailed.value && !facilities.value)
+const showerLoadFailed = computed(() => showerFailed.value && !facilities.value)
 
 const nearby = computed(() =>
   selected.value ? nearbyShops(selected.value, shops.value, radius.value, enabledCategories.value) : [],
@@ -42,6 +61,8 @@ onMounted(async () => {
   startRoutes()
   startCycling()
   startShelters()
+  startToilets()
+  startShowers()
 
   // The data date is informative only; the map works without it.
   loadJson<{ generatedAt: string }>(fetch, app.baseURL, 'meta.json')
@@ -79,8 +100,12 @@ watch(selected, async () => {
           v-model:show-urban="showUrban"
           v-model:show-cycling="showCycling"
           v-model:show-shelters="showShelters"
+          v-model:show-toilets="showToilets"
+          v-model:show-showers="showShowers"
           :cycling-failed="cyclingFailed"
           :shelter-failed="shelterFailed"
+          :toilet-failed="toiletLoadFailed"
+          :shower-failed="showerLoadFailed"
         />
       </header>
 
@@ -118,6 +143,9 @@ watch(selected, async () => {
           :routes="routes"
           :show-shelters="showShelters"
           :shelters="shelters"
+          :show-toilets="showToilets"
+          :show-showers="showShowers"
+          :facilities="facilities"
           :show-vending="enabledCategories.has('vending')"
           @select="selected = $event"
         />

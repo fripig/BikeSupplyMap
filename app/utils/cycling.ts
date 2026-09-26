@@ -1,5 +1,5 @@
 import { ref, shallowRef, watch, type Ref, type ShallowRef } from 'vue'
-import type { CyclingData, CyclingPath, RouteData, Shelter } from './load-data'
+import type { CyclingData, CyclingPath, RouteData, Shelter, Shower, Toilet } from './load-data'
 
 // Signals and crossings only mean something at street level.
 export const CYCLING_POINTS_MIN_ZOOM = 16
@@ -85,23 +85,59 @@ export function shelterLabel(kind: Shelter['kind'], name: string | null): string
   return name ?? '涼亭'
 }
 
+// Popup text for a toilet: its name or 公廁, then the tagged attributes in a
+// fixed order. Untagged attributes are left out rather than shown as missing.
+export function toiletLabel(t: Pick<Toilet, 'name' | 'wheelchair' | 'changing_table' | 'unisex' | 'fee'>): string {
+  const attributes = [
+    t.wheelchair === 'yes' && '無障礙',
+    t.wheelchair === 'limited' && '部分無障礙',
+    t.changing_table === 'yes' && '尿布台',
+    t.unisex === 'yes' && '性別友善',
+    t.fee === 'no' && '免費',
+    t.fee === 'yes' && '收費',
+  ].filter(Boolean)
+  const name = t.name ?? '公廁'
+  return attributes.length ? `${name} · ${attributes.join('、')}` : name
+}
+
+// Popup text for a shower: a sports centre says its showers may be paid; an OSM
+// shower shows its name or 淋浴間, then 免費 or 收費 when tagged.
+export function showerLabel(s: Pick<Shower, 'kind' | 'name' | 'fee'>): string {
+  if (s.kind === 'sports_centre') return `${s.name} · 淋浴間（可能收費）`
+  const fee = s.fee === 'no' ? ' · 免費' : s.fee === 'yes' ? ' · 收費' : ''
+  return `${s.name ?? '淋浴間'}${fee}`
+}
+
+// Which layers the legend describes; every flag is required so a new layer
+// cannot be left out of the legend by accident.
+export interface LegendFlags {
+  routes: boolean
+  urban: boolean
+  vending: boolean
+  shelters: boolean
+  toilets: boolean
+  showers: boolean
+}
+
 // Legend entries: route lines whenever routes are drawn, route-side vending
 // while routes are drawn and the 自動販賣機 category is on, the two rain shelter
-// icons while shelters are drawn, and urban lines and the signal and crossing
-// dots while the urban layer is on.
-export function legendEntries(routesShown: boolean, urbanShown: boolean, vendingShown: boolean, sheltersShown: boolean): LegendEntry[] {
+// icons, 廁所 and 淋浴 while their layers are drawn, and urban lines and the
+// signal and crossing dots while the urban layer is on.
+export function legendEntries(flags: LegendFlags): LegendEntry[] {
   const entries: LegendEntry[] = []
-  if (routesShown) {
+  if (flags.routes) {
     entries.push({ label: '河濱自行車道', icon: 'line cycling-legend__line--riverside' })
     entries.push({ label: '橋梁自行車道', icon: 'line cycling-legend__line--bridge' })
     entries.push({ label: '連接道路', icon: 'line cycling-legend__line--link' })
-    if (vendingShown) entries.push({ label: '自動販賣機', icon: 'dot cycling-legend__dot--vending' })
+    if (flags.vending) entries.push({ label: '自動販賣機', icon: 'dot cycling-legend__dot--vending' })
   }
-  if (sheltersShown) {
+  if (flags.shelters) {
     entries.push({ label: '橋下躲雨點', icon: 'glyph cycling-legend__glyph--bridge' })
     entries.push({ label: '涼亭躲雨點', icon: 'glyph cycling-legend__glyph--shelter' })
   }
-  if (urbanShown) {
+  if (flags.toilets) entries.push({ label: '廁所', icon: 'glyph cycling-legend__glyph--toilet' })
+  if (flags.showers) entries.push({ label: '淋浴', icon: 'glyph cycling-legend__glyph--shower' })
+  if (flags.urban) {
     entries.push({ label: '自行車道', icon: 'line' })
     entries.push({ label: '自行車道（畫線）', icon: 'line cycling-legend__line--lane' })
     entries.push({ label: '紅綠燈', icon: 'dot cycling-legend__dot--signal' })

@@ -7,7 +7,9 @@ const categories = defineModel<Set<Category>>('categories', { required: true })
 const showUrban = defineModel<boolean>('showUrban', { required: true })
 const showCycling = defineModel<boolean>('showCycling', { required: true })
 const showShelters = defineModel<boolean>('showShelters', { required: true })
-defineProps<{ cyclingFailed?: boolean, shelterFailed?: boolean }>()
+const showToilets = defineModel<boolean>('showToilets', { required: true })
+const showShowers = defineModel<boolean>('showShowers', { required: true })
+defineProps<{ cyclingFailed?: boolean, shelterFailed?: boolean, toiletFailed?: boolean, showerFailed?: boolean }>()
 
 function toggle(category: Category) {
   const next = new Set(categories.value)
@@ -37,6 +39,20 @@ function toggle(category: Category) {
     <span>躲雨點</span>
   </label>
   <p v-if="shelterFailed" class="switch__error" role="alert">躲雨點資料載入失敗</p>
+
+  <label class="switch">
+    <input v-model="showToilets" type="checkbox" role="switch">
+    <span class="switch__track" aria-hidden="true" />
+    <span>廁所</span>
+  </label>
+  <p v-if="toiletFailed" class="switch__error" role="alert">廁所資料載入失敗</p>
+
+  <label class="switch">
+    <input v-model="showShowers" type="checkbox" role="switch">
+    <span class="switch__track" aria-hidden="true" />
+    <span>淋浴</span>
+  </label>
+  <p v-if="showerFailed" class="switch__error" role="alert">淋浴資料載入失敗</p>
 
   <fieldset class="controls">
     <legend class="controls__legend">範圍（直線距離）</legend>
