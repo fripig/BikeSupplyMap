@@ -1493,6 +1493,7 @@
 {"id":"500111134","name":"重陽路39巷","city":"臺北市","district":"南港區","lat":25.05634,"lng":121.59518,"riverside":false},
 {"id":"500111135","name":"興南街52巷","city":"臺北市","district":"南港區","lat":25.05625,"lng":121.60423,"riverside":false},
 {"id":"500111136","name":"成功路一段36巷(松河街)","city":"臺北市","district":"南港區","lat":25.05758,"lng":121.59162,"riverside":true},
+{"id":"500111138","name":"捷運南港站(生技隧道北側)","city":"臺北市","district":"南港區","lat":25.05206,"lng":121.60803,"riverside":false},
 {"id":"500112001","name":"黎忠區民活動中心","city":"臺北市","district":"信義區","lat":25.02035,"lng":121.55769,"riverside":false},
 {"id":"500112002","name":"基隆路二段159巷口","city":"臺北市","district":"信義區","lat":25.02561,"lng":121.55409,"riverside":false},
 {"id":"500112003","name":"嘉興街175巷口","city":"臺北市","district":"信義區","lat":25.02811,"lng":121.55671,"riverside":false},
