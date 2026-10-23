@@ -263,7 +263,9 @@ describe('fetch-data', () => {
     // The loop's riverside way 1 is left out; only its own way 5 remains.
     expect(routes[41]).toEqual({ kind: 'link', name: '環騎臺北（連接道路）', lines: [[[24.8, 121.3], [24.801, 121.3]]] })
     expect(routes.slice(41).map((r) => r.name)).toEqual(LOOP_ROUTES.map((l) => l.label))
-    expect(routes[45]).toEqual({ kind: 'link', name: '北臺濱海環線（環島1-1）', lines: [[[24.84, 121.3], [24.841, 121.3]]] })
+    expect(routes.slice(42).every((r) => r.optional === true && Array.isArray(r.vending))).toBe(true)
+    expect(routes[45]).toEqual({ kind: 'link', name: '北臺濱海環線（環島1-1）', optional: true, lines: [[[24.84, 121.3], [24.841, 121.3]]], vending: [] })
+    expect(data['routes.json'].split('\n')[46]).toBe(JSON.stringify(routes[45]))
     expect(routes[0]).toEqual({ kind: 'riverside', name: '測試河0自行車道', lines: [[[25.03, 121.53], [25.03, 121.6]]] })
     expect(routes[21]).toEqual({ kind: 'bridge', name: '測試0橋自行車道', lines: [[[24.9, 121.4], [24.901, 121.4]]] })
     expect(data['routes.json'].split('\n')[1]).toBe(JSON.stringify(routes[0]) + ',')

@@ -8,7 +8,7 @@ import { buildCyclingLayer } from './lib/cycling-layer.js'
 import { classifyRiverside, riversideSegments } from './lib/riverside.js'
 import { BRIDGE_SUPPLEMENTS, supplementClauses } from './lib/bridge-supplements.js'
 import { LOOP_ROUTES } from './lib/loop-routes.js'
-import { buildRoutes, routeVending } from './lib/routes.js'
+import { buildRoutes, splitRouteVending } from './lib/routes.js'
 import { bridgeSpots, shelterSpots } from './lib/shelters.js'
 import { showerSpots, toiletSpots } from './lib/facilities.js'
 import { fetchAllPages } from './lib/paginate.js'
@@ -243,7 +243,8 @@ async function main() {
   const sortedShops = shops
     .map((s) => ({ ...s, lat: round6(s.lat), lng: round6(s.lng) }))
     .sort(byId)
-  const vending = routeVending(routes, sortedShops)
+  // Optional loops carry their own vending; the top level covers routes drawn on load.
+  const { vending, routes: publishedRoutes } = splitRouteVending(routes, sortedShops)
 
   const shelterCounts = { bridge: 0, shelter: 0 }
   for (const s of shelters) shelterCounts[s.kind]++
@@ -289,7 +290,7 @@ async function main() {
     // The raw vending tag only feeds routes.json; shops.json keeps its five fields.
     'shops.json': toJsonLines(sortedShops.map(({ vending: _, ...shop }) => shop)),
     'cycling.json': cyclingJson(cycling),
-    'routes.json': routesJson(routes, vending),
+    'routes.json': routesJson(publishedRoutes, vending),
     'shelters.json': sheltersJson(shelters),
     'facilities.json': facilitiesJson(facilities),
     'meta.json': `${JSON.stringify(meta, null, 2)}\n`,

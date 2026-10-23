@@ -93,16 +93,102 @@ test('the 環騎臺北 link line shows its name and is in the legend', async ({ 
   await expect(page.locator('.leaflet-popup-content')).toHaveText(name)
 })
 
-test('the 北臺濱海環線 link line shows its name', async ({ page }) => {
-  const name = '北臺濱海環線（環島1-1）'
-  const route = (await loadRoutes(page)).routes.find((r) => r.kind === 'link' && r.name === name)
-  if (!route) throw new Error(`routes.json has no link route named ${name}`)
+const COAST = '北臺濱海環線（環島1-1）'
+const loopGroup = (page: Page) => page.locator('fieldset', { has: page.locator('legend', { hasText: /^環線$/ }) })
+const loopSwitch = (page: Page, name: string) => loopGroup(page).locator('label.switch', { hasText: name })
+const popup = (page: Page) => page.locator('.leaflet-popup-content')
+
+// The 北臺濱海環線 route and the middle point of its longest line.
+async function coastRoute(page: Page) {
+  const route = (await loadRoutes(page)).routes.find((r) => r.optional && r.name === COAST)
+  if (!route) throw new Error(`routes.json has no optional route named ${COAST}`)
   const line = route.lines.reduce((a, b) => (b.length > a.length ? b : a))
-  const at = line[Math.floor(line.length / 2)]!
+  return { route, at: line[Math.floor(line.length / 2)]! }
+}
+
+async function clickAt(page: Page, at: LatLng) {
   await setView(page, at, 17)
   const point = await toPagePoint(page, at)
   await page.mouse.click(point.x, point.y)
-  await expect(page.locator('.leaflet-popup-content')).toHaveText(name)
+}
+
+const mapView = (page: Page) => page.evaluate(() => {
+  const map = window.__supplyMap!
+  return { center: map.getCenter(), zoom: map.getZoom() }
+})
+
+test('optional loops are listed in 環線, all off, and not drawn on load', async ({ page }) => {
+  const optional = (await loadRoutes(page)).routes.filter((r) => r.optional).map((r) => r.name)
+  expect(optional).toEqual([
+    '環騎臺北替代道路（深南路-南深路段）',
+    '環騎臺北替代道路（市民大道-莊敬隧道段）',
+    '環騎臺北替代道路（研究院路-莊敬隧道段）',
+    COAST,
+  ])
+  const switches = loopGroup(page).getByRole('switch')
+  await expect(loopGroup(page).locator('label.switch')).toHaveText(optional)
+  for (const s of await switches.all()) await expect(s).not.toBeChecked()
+  const { route, at } = await coastRoute(page)
+  await clickAt(page, at)
+  await expect(popup(page)).toHaveCount(0)
+  const v = route.vending?.[0]
+  if (!v) throw new Error(`${COAST} has no vending machine of its own`)
+  await setView(page, [v.lat, v.lng], 17)
+  expect(await vendingDrawnAt(page, [v.lat, v.lng])).toBe(false)
+})
+
+test('turning the 北臺濱海環線 switch on frames and draws it, and off removes it without moving the map', async ({ page }) => {
+  const { route, at } = await coastRoute(page)
+  const points = route.lines.flat()
+  await loopSwitch(page, COAST).click()
+  await expect(loopGroup(page).getByRole('switch', { name: COAST })).toBeChecked()
+  await settleMap(page)
+  const framed = await page.evaluate((pts) => {
+    const bounds = window.__supplyMap!.getBounds()
+    return pts.every((p) => bounds.contains(p))
+  }, points)
+  expect(framed).toBe(true)
+
+  const v = route.vending?.[0]
+  if (!v) throw new Error(`${COAST} has no vending machine of its own`)
+  await setView(page, [v.lat, v.lng], 17)
+  expect(await vendingDrawnAt(page, [v.lat, v.lng])).toBe(true)
+
+  await clickAt(page, at)
+  await expect(popup(page)).toHaveText(COAST)
+  await page.keyboard.press('Escape')
+
+  const before = await mapView(page)
+  await loopSwitch(page, COAST).click()
+  await expect(loopGroup(page).getByRole('switch', { name: COAST })).not.toBeChecked()
+  await settleMap(page)
+  expect(await mapView(page)).toEqual(before)
+  await setView(page, [v.lat, v.lng], 17)
+  expect(await vendingDrawnAt(page, [v.lat, v.lng])).toBe(false)
+  await clickAt(page, at)
+  await expect(popup(page)).toHaveCount(0)
+})
+
+test('a loop\'s vending icons follow the 自動販賣機 toggle while the loop stays drawn', async ({ page }) => {
+  const { route, at } = await coastRoute(page)
+  const v = route.vending?.[0]
+  if (!v) throw new Error(`${COAST} has no vending machine of its own`)
+  await loopSwitch(page, COAST).click()
+  await setView(page, [v.lat, v.lng], 17)
+  expect(await vendingDrawnAt(page, [v.lat, v.lng])).toBe(true)
+  await vendingChip(page).click()
+  expect(await vendingDrawnAt(page, [v.lat, v.lng])).toBe(false)
+  await vendingChip(page).click()
+  expect(await vendingDrawnAt(page, [v.lat, v.lng])).toBe(true)
+  await clickAt(page, at)
+  await expect(popup(page)).toHaveText(COAST)
+})
+
+test('no 環線 group is shown when routes.json fails to load', async ({ page }) => {
+  await page.route('**/data/routes.json', (route) => route.fulfill({ status: 404, body: 'not found' }))
+  await page.reload()
+  await expect(page.getByRole('alert').filter({ hasText: '自行車道資料載入失敗' })).toBeVisible()
+  await expect(loopGroup(page)).toHaveCount(0)
 })
 
 test('a riverside station on a route can be selected', async ({ page }) => {
@@ -174,6 +260,8 @@ test('a station marker overlapping a shelter icon stays selectable', async ({ pa
   await expect(shelterIcons(page).first()).toBeVisible()
   await setView(page, [station.lat, station.lng], 17)
   const marker = page.getByTitle(station.name, { exact: true }).first()
+  // On phones the map sits below the controls, so the marker can start below the viewport.
+  await marker.scrollIntoViewIfNeeded()
   const a = (await marker.boundingBox())!
   // Click inside the area where the station marker and a shelter icon overlap.
   let overlap: { x: number, y: number } | undefined

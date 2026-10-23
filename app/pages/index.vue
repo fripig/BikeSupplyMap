@@ -26,6 +26,9 @@ const {
 } = useCyclingToggle(createCyclingLoader(fetch, app.baseURL))
 const { data: routes, failed: routesFailed, start: startRoutes } = useRouteData(() => loadRoutes(fetch, app.baseURL))
 const cyclingFailed = computed(() => urbanFailed.value || routesFailed.value)
+// Optional loop routes are listed in the 環線 group and drawn only while switched on.
+const loops = computed(() => routes.value?.routes.filter((r) => r.optional).map((r) => r.name) ?? [])
+const shownLoops = ref(new Set<string>())
 // Rain shelters are off at first; shelters.json is fetched on the first turn-on.
 const {
   show: showShelters,
@@ -105,6 +108,8 @@ watch(selected, async () => {
           v-model:show-shelters="showShelters"
           v-model:show-toilets="showToilets"
           v-model:show-showers="showShowers"
+          v-model:shown-loops="shownLoops"
+          :loops="loops"
           :cycling-failed="cyclingFailed"
           :shelter-failed="shelterFailed"
           :toilet-failed="toiletLoadFailed"
@@ -152,6 +157,7 @@ watch(selected, async () => {
           :show-showers="showShowers"
           :facilities="facilities"
           :show-vending="enabledCategories.has('vending')"
+          :shown-loops="shownLoops"
           @select="selected = $event"
         />
       </ClientOnly>

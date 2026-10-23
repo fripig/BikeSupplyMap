@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { BRIDGE_SUPPLEMENTS, supplementClauses } from './bridge-supplements.js'
 import { LOOP_ROUTES } from './loop-routes.js'
-import { buildRoutes, joinLines, routeVending } from './routes.js'
+import { buildRoutes, joinLines, routeVending, splitRouteVending } from './routes.js'
 
 const P1 = [25.0, 121.5]
 const P2 = [25.0, 121.501]
@@ -127,15 +127,25 @@ describe('buildRoutes loop routes', () => {
   const rel = (id, name, refs) => ({ type: 'relation', id, tags: { route: 'bicycle', name }, members: refs.map((ref) => ({ type: 'way', ref, role: '' })) })
   const way = (id, lat) => ({ type: 'way', id, geometry: [{ lat, lon: 121.5 }, { lat, lon: 121.501 }] })
   const ENTRY = { name: '環騎臺北', label: '環騎臺北（連接道路）' }
+  const ALT = { name: '環騎臺北市區替代道路：深南路-南深路段', label: '環騎臺北替代道路（深南路-南深路段）' }
 
-  it('lists 環騎臺北 first, then its alternative sections and the 北臺濱海環線', () => {
+  it('lists 環騎臺北 first, then its optional alternative sections and the 北臺濱海環線', () => {
     expect(LOOP_ROUTES).toEqual([
       ENTRY,
-      { name: '環騎臺北市區替代道路：深南路-南深路段', label: '環騎臺北替代道路（深南路-南深路段）' },
-      { name: '環騎臺北市區替代道路：市民大道-莊敬隧道段', label: '環騎臺北替代道路（市民大道-莊敬隧道段）' },
-      { name: '環騎臺北市區替代道路：研究院路-莊敬隧道段', label: '環騎臺北替代道路（研究院路-莊敬隧道段）' },
-      { name: '北臺濱海環線 (西向)', label: '北臺濱海環線（環島1-1）' },
+      { name: '環騎臺北市區替代道路：深南路-南深路段', label: '環騎臺北替代道路（深南路-南深路段）', optional: true },
+      { name: '環騎臺北市區替代道路：市民大道-莊敬隧道段', label: '環騎臺北替代道路（市民大道-莊敬隧道段）', optional: true },
+      { name: '環騎臺北市區替代道路：研究院路-莊敬隧道段', label: '環騎臺北替代道路（研究院路-莊敬隧道段）', optional: true },
+      { name: '北臺濱海環線 (西向)', label: '北臺濱海環線（環島1-1）', optional: true },
     ])
+  })
+
+  it('marks routes of optional loop entries and leaves plain ones unmarked', () => {
+    const { routes } = buildRoutes({
+      elements: [rel(1, '環騎臺北', [201]), rel(2, ALT.name, [202]), way(201, 25.01), way(202, 25.02)],
+    }, [], [ENTRY, { ...ALT, optional: true }])
+    const [plain, optional] = routes.filter((r) => r.kind === 'link')
+    expect(Object.keys(plain)).toEqual(['kind', 'name', 'lines'])
+    expect(optional).toEqual({ kind: 'link', name: ALT.label, optional: true, lines: [[[25.02, 121.5], [25.02, 121.501]]] })
   })
 
   it('keeps only loop ways that no riverside or bridge relation lists', () => {
@@ -185,8 +195,6 @@ describe('buildRoutes loop routes', () => {
     expect(routes.some((r) => r.kind === 'link')).toBe(false)
     expect(missingLoops).toEqual(['環騎臺北'])
   })
-
-  const ALT = { name: '環騎臺北市區替代道路：深南路-南深路段', label: '環騎臺北替代道路（深南路-南深路段）' }
 
   it('publishes a way shared by two loops only in the earlier link route', () => {
     const { routes, missingLoops } = buildRoutes({
@@ -262,5 +270,32 @@ describe('routeVending', () => {
       { name: null, vending: null, lat: 25.0, lng: 121.505 },
       { name: '黑松販賣機', vending: 'coffee;food', lat: 25.0, lng: 121.505 },
     ])
+  })
+})
+
+describe('splitRouteVending', () => {
+  // Lines run east–west; 0.001° of latitude is about 111 m. 北臺濱海環線 has a
+  // piece 111 m from the riverside line and a piece next to 市民大道.
+  const riverside = { kind: 'riverside', name: '淡水河左岸自行車道', lines: [[[25.0, 121.5], [25.0, 121.53]]] }
+  const coast = { kind: 'link', name: '北臺濱海環線（環島1-1）', optional: true, lines: [[[25.001, 121.52], [25.001, 121.53]], [[25.02, 121.5], [25.02, 121.51]]] }
+  const civic = { kind: 'link', name: '環騎臺北替代道路（市民大道-莊敬隧道段）', optional: true, lines: [[[25.023, 121.5], [25.023, 121.51]]] }
+  const shop = (id, lat, lng) => ({ id, name: id, category: 'vending', lat, lng, vending: 'drinks' })
+  const v1 = shop('v1', 25.0005, 121.525) // near the riverside line and 北臺濱海環線
+  const v2 = shop('v2', 25.0185, 121.505) // 167 m from 北臺濱海環線, 500 m from 市民大道
+  const v3 = shop('v3', 25.0215, 121.505) // 167 m from both optional loops
+  const v4 = shop('v4', 25.1, 121.505) // near no line
+  const out = (s) => ({ name: s.name, vending: 'drinks', lat: s.lat, lng: s.lng })
+
+  it('lists vending near always-drawn routes at the top level and the rest on each optional loop', () => {
+    const { vending, routes } = splitRouteVending([riverside, coast, civic], [v4, v3, v2, v1])
+    expect(vending).toEqual([out(v1)])
+    expect(routes[0]).toEqual(riverside)
+    expect(routes[1]).toEqual({ ...coast, vending: [out(v2), out(v3)] })
+    expect(routes[2]).toEqual({ ...civic, vending: [out(v3)] })
+  })
+
+  it('gives an optional loop an empty array when no machine is its own', () => {
+    const { routes } = splitRouteVending([riverside, coast], [v1])
+    expect(routes[1].vending).toEqual([])
   })
 })

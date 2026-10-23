@@ -2,7 +2,7 @@
 import type { Circle, Control, LayerGroup, Map as LeafletMap, Marker, MarkerCluster, MarkerClusterGroup } from 'leaflet'
 import { splitStations, type NearbyShop, type Station } from '~/utils/geo'
 import { cyclingDashArray, cyclingVisibility, legendEntries, shelterLabel, showerLabel, toiletLabel, vendingLabel } from '~/utils/cycling'
-import type { CyclingData, FacilityData, RouteData, ShelterData } from '~/utils/load-data'
+import type { BikeRoute, CyclingData, FacilityData, RouteData, RouteVending, ShelterData } from '~/utils/load-data'
 import { CATEGORY_COLORS, CATEGORY_LABELS } from '~/utils/categories'
 import { formatDistance } from '~/utils/format'
 import { directionsUrl, mapsPlaceUrl } from '~/utils/links'
@@ -18,6 +18,7 @@ const props = defineProps<{
   cycling: CyclingData | null
   routes: RouteData | null
   showVending: boolean
+  shownLoops: Set<string>
   showShelters: boolean
   shelters: ShelterData | null
   showToilets: boolean
@@ -40,6 +41,8 @@ let urbanLayer: MarkerClusterGroup | undefined
 let bikeRenderer: import('leaflet').Canvas | undefined
 let routeLayer: LayerGroup | undefined
 let vendingLayer: LayerGroup | undefined
+// Optional loop routes by name, built the first time their 環線 switch is on.
+const loopLayers = new Map<string, { lines: LayerGroup, vending: LayerGroup }>()
 let shelterLayer: LayerGroup | undefined
 let toiletLayer: LayerGroup | undefined
 let showerLayer: LayerGroup | undefined
@@ -48,7 +51,8 @@ let cyclingPoints: LayerGroup | undefined
 let legend: Control | undefined
 let legendEl: HTMLElement | undefined
 
-// Riverside, bridge and link routes are thick and always shown; urban paths are thin.
+// Riverside, bridge and link routes are thick and shown on load, except optional
+// loops, which follow their 環線 switch; urban paths are thin.
 const RIVERSIDE_COLOR = '#1971c2'
 const BRIDGE_COLOR = '#ae3ec9'
 const LINK_COLOR = '#9c6644'
@@ -175,44 +179,98 @@ watch(() => props.nearby, drawSelection)
 // no DOM nodes; it sits under the station markers, so stations stay clickable.
 const renderer = () => (bikeRenderer ??= L.canvas({ padding: 0.3 }))
 
-// Draws riverside, bridge and link routes once their data arrives. Each joined
-// line is one polyline; bridge and link lines open a popup with the route name. Route-side vending
-// machines are drawn on the same canvas in their own layer, which follows the
-// 自動販賣機 category, and open a popup with name and types.
-function drawRoutes() {
-  if (!map || routeLayer || !props.routes) return
-  routeLayer = L.layerGroup()
-  for (const route of props.routes.routes) {
-    const named = route.kind !== 'riverside'
-    const color = route.kind === 'bridge' ? BRIDGE_COLOR : route.kind === 'link' ? LINK_COLOR : RIVERSIDE_COLOR
-    for (const line of route.lines) {
-      const polyline = L.polyline(line, { renderer: renderer(), interactive: named, weight: 6, opacity: 0.9, color })
-      if (named) polyline.bindPopup(escapeHtml(route.name))
-      polyline.addTo(routeLayer)
-    }
+// Adds a route's joined lines to `layer`, one polyline each; bridge and link
+// lines open a popup with the route name.
+function addRouteLines(route: BikeRoute, layer: LayerGroup) {
+  const named = route.kind !== 'riverside'
+  const color = route.kind === 'bridge' ? BRIDGE_COLOR : route.kind === 'link' ? LINK_COLOR : RIVERSIDE_COLOR
+  for (const line of route.lines) {
+    const polyline = L.polyline(line, { renderer: renderer(), interactive: named, weight: 6, opacity: 0.9, color })
+    if (named) polyline.bindPopup(escapeHtml(route.name))
+    polyline.addTo(layer)
   }
-  vendingLayer = L.layerGroup()
-  for (const v of props.routes.vending ?? []) {
+}
+
+// A layer of route-side vending machines, each opening a popup with name and types.
+function vendingMarkers(items: RouteVending[]) {
+  const layer = L.layerGroup()
+  for (const v of items) {
     L.circleMarker([v.lat, v.lng], {
       renderer: renderer(), radius: 5, weight: 2, color: '#fff', fillColor: CATEGORY_COLORS.vending, fillOpacity: 1,
     })
       .bindPopup(placePopup(vendingLabel(v.name, v.vending), v))
-      .addTo(vendingLayer)
+      .addTo(layer)
   }
-  // Routes go under the urban paths so the thin green lines stay visible.
-  map.addLayer(routeLayer)
-  if (cyclingPaths && map.hasLayer(cyclingPaths)) {
-    map.removeLayer(cyclingPaths)
-    map.addLayer(cyclingPaths)
-  }
-  // Vending icons are added last so the thick route lines do not cover them.
-  updateVendingLayer()
+  return layer
 }
 
+// Everything shares one canvas, drawn in the order layers were added. After
+// route lines are added, re-add the urban paths and every shown vending layer
+// so the thin green lines and the vending icons stay on top of them.
+function raiseOverRoutes() {
+  if (!map) return
+  for (const layer of [cyclingPaths, vendingLayer, ...[...loopLayers.values()].map((l) => l.vending)]) {
+    if (layer && map.hasLayer(layer)) {
+      map.removeLayer(layer)
+      map.addLayer(layer)
+    }
+  }
+}
+
+// Draws the routes shown on load once their data arrives. Route-side vending
+// machines are drawn on the same canvas in their own layer, which follows the
+// 自動販賣機 category.
+function drawRoutes() {
+  if (!map || routeLayer || !props.routes) return
+  routeLayer = L.layerGroup()
+  for (const route of props.routes.routes) {
+    if (!route.optional) addRouteLines(route, routeLayer)
+  }
+  vendingLayer = vendingMarkers(props.routes.vending ?? [])
+  map.addLayer(routeLayer)
+  raiseOverRoutes()
+  updateVendingLayer()
+  updateLoops()
+}
+
+// Shows the optional loops whose 環線 switch is on and hides the rest. Loops
+// just turned on are framed; turning one off leaves the view alone.
+function updateLoops() {
+  if (!map || !props.routes) return
+  const added: BikeRoute[] = []
+  for (const route of props.routes.routes) {
+    if (!route.optional) continue
+    const on = props.shownLoops.has(route.name)
+    let layers = loopLayers.get(route.name)
+    if (on && !layers) {
+      layers = { lines: L.layerGroup(), vending: vendingMarkers(route.vending ?? []) }
+      addRouteLines(route, layers.lines)
+      loopLayers.set(route.name, layers)
+    }
+    if (!layers) continue
+    if (on && !map.hasLayer(layers.lines)) {
+      map.addLayer(layers.lines)
+      added.push(route)
+    }
+    if (!on && map.hasLayer(layers.lines)) map.removeLayer(layers.lines)
+  }
+  updateVendingLayer()
+  if (added.length) {
+    raiseOverRoutes()
+    map.fitBounds(L.latLngBounds(added.flatMap((r) => r.lines.flat())), { padding: [16, 16] })
+  }
+}
+
+// Route-side vending follows the 自動販賣機 category; a loop's own vending also
+// needs its loop shown.
 function updateVendingLayer() {
   if (!map || !vendingLayer) return
   if (props.showVending) map.addLayer(vendingLayer)
   else map.removeLayer(vendingLayer)
+  for (const { lines, vending } of loopLayers.values()) {
+    if (props.showVending && map.hasLayer(lines)) map.addLayer(vending)
+    else map.removeLayer(vending)
+  }
   updateLegend()
 }
 
@@ -329,6 +387,7 @@ function updateCyclingLayer() {
 
 watch(() => props.routes, drawRoutes)
 watch(() => props.showVending, updateVendingLayer)
+watch(() => props.shownLoops, updateLoops)
 watch(() => [props.showCycling, props.cycling] as const, updateCyclingLayer)
 watch(() => [props.showShelters, props.shelters] as const, updateShelterLayer)
 watch(() => [props.showToilets, props.showShowers, props.facilities] as const, updateFacilityLayers)

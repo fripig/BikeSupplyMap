@@ -14,12 +14,15 @@ const mountControls = (showUrban: boolean, extra: Record<string, unknown> = {}) 
     showShelters: false,
     showToilets: false,
     showShowers: false,
+    loops: [],
+    shownLoops: new Set<string>(),
     'onUpdate:showRiverside': () => {},
     'onUpdate:showUrban': () => {},
     'onUpdate:showCycling': () => {},
     'onUpdate:showShelters': () => {},
     'onUpdate:showToilets': () => {},
     'onUpdate:showShowers': () => {},
+    'onUpdate:shownLoops': () => {},
     ...extra,
   },
 })
@@ -92,5 +95,34 @@ describe.each([
   it('shows its load failure message only when loading failed', () => {
     expect(mountControls(false).text()).not.toContain(message)
     expect(mountControls(false, { [failedProp]: true }).text()).toContain(message)
+  })
+})
+
+describe('MapControls loop switches', () => {
+  const LOOPS = ['環騎臺北替代道路（深南路-南深路段）', '北臺濱海環線（環島1-1）']
+  const group = (wrapper: ReturnType<typeof mountControls>) =>
+    wrapper.findAll('fieldset').find((f) => f.find('legend').text() === '環線')
+
+  it('shows no 環線 group without optional loops', () => {
+    expect(group(mountControls(false))).toBeUndefined()
+  })
+
+  it('lists one switch per loop in order, checked as in the model', () => {
+    const wrapper = mountControls(false, { loops: LOOPS, shownLoops: new Set([LOOPS[1]]) })
+    const switches = group(wrapper)!.findAll('.switch')
+    expect(switches.map((s) => s.text())).toEqual(LOOPS)
+    for (const s of switches) expect(s.find('input').attributes('role')).toBe('switch')
+    expect(switches.map((s) => s.find<HTMLInputElement>('input').element.checked)).toEqual([false, true])
+  })
+
+  it('emits a new set with the toggled loop added or removed', async () => {
+    const shown = new Set([LOOPS[1]!])
+    const wrapper = mountControls(false, { loops: LOOPS, shownLoops: shown })
+    const [first, second] = group(wrapper)!.findAll('.switch input')
+    await first!.setValue(true)
+    await second!.setValue(false)
+    const emitted = wrapper.emitted('update:shownLoops')!.map(([s]) => [...(s as Set<string>)])
+    expect(emitted).toEqual([[LOOPS[1], LOOPS[0]], []])
+    expect([...shown]).toEqual([LOOPS[1]])
   })
 })

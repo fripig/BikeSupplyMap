@@ -101,20 +101,38 @@ export function buildRoutes(body, supplements = [], loops = []) {
       continue
     }
     refs.forEach((ref) => usedWays.add(ref))
-    routes.push({ kind: 'link', name: loop.label, lines: joinLines(refs.map((ref) => ways.get(ref))) })
+    const lines = joinLines(refs.map((ref) => ways.get(ref)))
+    routes.push(loop.optional ? { kind: 'link', name: loop.label, optional: true, lines } : { kind: 'link', name: loop.label, lines })
   }
   return { routes, missingSupplements, missingLoops }
 }
 
 const byId = (a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
 
-// Vending shops within `meters` of any segment of any route line, as the
-// routes.json `vending` array sorted by shop id.
-export function routeVending(routes, shops, meters = 200) {
+// Vending shops within `meters` of any segment of any route line, sorted by shop id.
+function nearVending(routes, shops, meters) {
   const segments = routes.flatMap((r) => r.lines.flatMap((line) =>
     line.slice(1).map(([lat, lng], i) => [{ lat: line[i][0], lng: line[i][1] }, { lat, lng }])))
-  return shops
-    .filter((s) => s.category === 'vending' && isNearSegments(s, segments, meters))
-    .sort(byId)
-    .map(({ name, vending, lat, lng }) => ({ name, vending: vending ?? null, lat, lng }))
+  return shops.filter((s) => s.category === 'vending' && isNearSegments(s, segments, meters)).sort(byId)
+}
+
+const vendingEntry = ({ name, vending, lat, lng }) => ({ name, vending: vending ?? null, lat, lng })
+
+// Vending shops within `meters` of any segment of any route line, as the
+// routes.json `vending` array sorted by shop id.
+export const routeVending = (routes, shops, meters = 200) => nearVending(routes, shops, meters).map(vendingEntry)
+
+// Splits route-side vending between the routes drawn on load and the optional
+// loops: `vending` covers the routes without `optional`, and each optional
+// route gets its own `vending` array of the machines near it that the top
+// level does not already list. A machine near two optional loops is in both.
+export function splitRouteVending(routes, shops, meters = 200) {
+  const top = nearVending(routes.filter((r) => !r.optional), shops, meters)
+  const topIds = new Set(top.map((s) => s.id))
+  return {
+    vending: top.map(vendingEntry),
+    routes: routes.map((r) => (r.optional
+      ? { ...r, vending: nearVending([r], shops, meters).filter((s) => !topIds.has(s.id)).map(vendingEntry) }
+      : r)),
+  }
 }

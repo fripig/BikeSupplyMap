@@ -10,13 +10,22 @@ const showCycling = defineModel<boolean>('showCycling', { required: true })
 const showShelters = defineModel<boolean>('showShelters', { required: true })
 const showToilets = defineModel<boolean>('showToilets', { required: true })
 const showShowers = defineModel<boolean>('showShowers', { required: true })
-defineProps<{ cyclingFailed?: boolean, shelterFailed?: boolean, toiletFailed?: boolean, showerFailed?: boolean }>()
+// Names of the optional loop routes in routes.json order, and the ones shown.
+const shownLoops = defineModel<Set<string>>('shownLoops', { required: true })
+defineProps<{ loops: string[], cyclingFailed?: boolean, shelterFailed?: boolean, toiletFailed?: boolean, showerFailed?: boolean }>()
 
 function toggle(category: Category) {
   const next = new Set(categories.value)
   if (next.has(category)) next.delete(category)
   else next.add(category)
   categories.value = next
+}
+
+function toggleLoop(name: string, on: boolean) {
+  const next = new Set(shownLoops.value)
+  if (on) next.add(name)
+  else next.delete(name)
+  shownLoops.value = next
 }
 </script>
 
@@ -60,6 +69,20 @@ function toggle(category: Category) {
     <span>淋浴</span>
   </label>
   <p v-if="showerFailed" class="switch__error" role="alert">淋浴資料載入失敗</p>
+
+  <fieldset v-if="loops.length" class="controls controls--loops">
+    <legend class="controls__legend">環線</legend>
+    <label v-for="name in loops" :key="name" class="switch">
+      <input
+        type="checkbox"
+        role="switch"
+        :checked="shownLoops.has(name)"
+        @change="toggleLoop(name, ($event.target as HTMLInputElement).checked)"
+      >
+      <span class="switch__track" aria-hidden="true" />
+      <span>{{ name }}</span>
+    </label>
+  </fieldset>
 
   <fieldset class="controls">
     <legend class="controls__legend">範圍（直線距離）</legend>
@@ -199,6 +222,10 @@ function toggle(category: Category) {
 }
 .controls--categories {
   margin-top: 0.75rem;
+}
+
+.controls--loops {
+  margin-bottom: 0.25rem;
 }
 
 .chips {
