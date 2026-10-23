@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { LOOP_ROUTES } from './lib/loop-routes.js'
 
 // Runs scripts/fetch-data.js end to end against a local fake of the three sources.
 const SCRIPT = fileURLToPath(new URL('./fetch-data.js', import.meta.url))
@@ -34,8 +35,9 @@ const overpassBody = (n, vending = 120, nearRoute = 100) => ({
 // (25.03, 121.54), so every Taipei station is riverside and no New Taipei one is.
 // The way runs 7 km east so the rain shelter fixture fits 80+ bridge spots.
 // ...plus `bridges` bridge routes over way 2, far from every station, and
-// two 重陽橋 main-span ways for the supplementary bridge list, and a 環騎臺北
-// loop sharing the riverside way 1 and owning way 5, far from every station.
+// two 重陽橋 main-span ways for the supplementary bridge list, a 環騎臺北
+// loop sharing the riverside way 1 and owning way 5, and one relation for each
+// later LOOP_ROUTES entry owning its own way, all far from every station.
 const routesBody = (n, bridges = 19, supplement = true, loop = true) => ({
   elements: [
     { type: 'way', id: 1, geometry: [{ lat: 25.03, lon: 121.53 }, { lat: 25.03, lon: 121.6 }] },
@@ -47,6 +49,10 @@ const routesBody = (n, bridges = 19, supplement = true, loop = true) => ({
     ...(loop ? [
       { type: 'way', id: 5, geometry: [{ lat: 24.8, lon: 121.3 }, { lat: 24.801, lon: 121.3 }] },
       { type: 'relation', id: 500, tags: { route: 'bicycle', name: '環騎臺北' }, members: [{ type: 'way', ref: 1 }, { type: 'way', ref: 5 }] },
+      ...LOOP_ROUTES.slice(1).flatMap((loop, i) => [
+        { type: 'way', id: 51 + i, geometry: [{ lat: 24.81 + i * 0.01, lon: 121.3 }, { lat: 24.811 + i * 0.01, lon: 121.3 }] },
+        { type: 'relation', id: 501 + i, tags: { route: 'bicycle', name: loop.name }, members: [{ type: 'way', ref: 51 + i }] },
+      ]),
     ] : []),
     ...Array.from({ length: n }, (_, i) => ({
       type: 'relation', id: i + 1, tags: { route: 'bicycle', name: `測試河${i}自行車道` }, members: [{ type: 'way', ref: 1 }],
@@ -249,13 +255,15 @@ describe('fetch-data', () => {
   it('writes riverside, bridge and link routes and reports the bridge count', async () => {
     const { code, stdout } = await run()
     expect(code).toBe(0)
-    expect(stdout).toContain('routes: 21 riverside, 19 bridge, 1 supplementary bridge, 1 link')
+    expect(stdout).toContain('routes: 21 riverside, 19 bridge, 1 supplementary bridge, 5 link')
     const data = await readData()
     const { routes } = JSON.parse(data['routes.json'])
-    expect(routes).toHaveLength(42)
+    expect(routes).toHaveLength(46)
     expect(routes[40]).toEqual({ kind: 'bridge', name: '重陽橋（人行道）', lines: [[[25.06, 121.49], [25.06, 121.491], [25.061, 121.492]]] })
     // The loop's riverside way 1 is left out; only its own way 5 remains.
     expect(routes[41]).toEqual({ kind: 'link', name: '環騎臺北（連接道路）', lines: [[[24.8, 121.3], [24.801, 121.3]]] })
+    expect(routes.slice(41).map((r) => r.name)).toEqual(LOOP_ROUTES.map((l) => l.label))
+    expect(routes[45]).toEqual({ kind: 'link', name: '北臺濱海環線（環島1-1）', lines: [[[24.84, 121.3], [24.841, 121.3]]] })
     expect(routes[0]).toEqual({ kind: 'riverside', name: '測試河0自行車道', lines: [[[25.03, 121.53], [25.03, 121.6]]] })
     expect(routes[21]).toEqual({ kind: 'bridge', name: '測試0橋自行車道', lines: [[[24.9, 121.4], [24.901, 121.4]]] })
     expect(data['routes.json'].split('\n')[1]).toBe(JSON.stringify(routes[0]) + ',')
@@ -304,7 +312,7 @@ describe('fetch-data', () => {
     responses['/routes'] = () => [200, routesBody(21, 19, true, false)]
     const { code, stderr } = await run()
     expect(code).not.toBe(0)
-    expect(stderr).toContain('loop route 環騎臺北')
+    expect(stderr).toContain('loop route 環騎臺北: no relation with this name, or no way left outside riverside, bridge and earlier link routes')
     expect(await readData()).toEqual(SEED)
   })
 

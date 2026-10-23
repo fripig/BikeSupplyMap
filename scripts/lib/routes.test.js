@@ -128,8 +128,14 @@ describe('buildRoutes loop routes', () => {
   const way = (id, lat) => ({ type: 'way', id, geometry: [{ lat, lon: 121.5 }, { lat, lon: 121.501 }] })
   const ENTRY = { name: '環騎臺北', label: '環騎臺北（連接道路）' }
 
-  it('lists 環騎臺北 as the first loop route', () => {
-    expect(LOOP_ROUTES[0]).toEqual(ENTRY)
+  it('lists 環騎臺北 first, then its alternative sections and the 北臺濱海環線', () => {
+    expect(LOOP_ROUTES).toEqual([
+      ENTRY,
+      { name: '環騎臺北市區替代道路：深南路-南深路段', label: '環騎臺北替代道路（深南路-南深路段）' },
+      { name: '環騎臺北市區替代道路：市民大道-莊敬隧道段', label: '環騎臺北替代道路（市民大道-莊敬隧道段）' },
+      { name: '環騎臺北市區替代道路：研究院路-莊敬隧道段', label: '環騎臺北替代道路（研究院路-莊敬隧道段）' },
+      { name: '北臺濱海環線 (西向)', label: '北臺濱海環線（環島1-1）' },
+    ])
   })
 
   it('keeps only loop ways that no riverside or bridge relation lists', () => {
@@ -178,6 +184,48 @@ describe('buildRoutes loop routes', () => {
     }, [], [ENTRY])
     expect(routes.some((r) => r.kind === 'link')).toBe(false)
     expect(missingLoops).toEqual(['環騎臺北'])
+  })
+
+  const ALT = { name: '環騎臺北市區替代道路：深南路-南深路段', label: '環騎臺北替代道路（深南路-南深路段）' }
+
+  it('publishes a way shared by two loops only in the earlier link route', () => {
+    const { routes, missingLoops } = buildRoutes({
+      elements: [rel(1, '環騎臺北', [201]), rel(2, ALT.name, [201, 202]), way(201, 25.01), way(202, 25.02)],
+    }, [], [ENTRY, ALT])
+    expect(missingLoops).toEqual([])
+    expect(routes.filter((r) => r.kind === 'link')).toEqual([
+      { kind: 'link', name: '環騎臺北（連接道路）', lines: [[[25.01, 121.5], [25.01, 121.501]]] },
+      { kind: 'link', name: '環騎臺北替代道路（深南路-南深路段）', lines: [[[25.02, 121.5], [25.02, 121.501]]] },
+    ])
+  })
+
+  it('reports a loop whose every way is in an earlier link route', () => {
+    const { routes, missingLoops } = buildRoutes({
+      elements: [rel(1, '環騎臺北', [201, 202]), rel(2, ALT.name, [201, 202]), way(201, 25.01), way(202, 25.02)],
+    }, [], [ENTRY, ALT])
+    expect(routes.filter((r) => r.kind === 'link').map((r) => r.name)).toEqual(['環騎臺北（連接道路）'])
+    expect(missingLoops).toEqual([ALT.name])
+  })
+
+  it('reports the 研究院路 alternative when 環騎臺北 already holds all its ways', () => {
+    const alt = LOOP_ROUTES[3]
+    const { missingLoops } = buildRoutes({
+      elements: [rel(1, '環騎臺北', [201, 202]), rel(2, alt.name, [201, 202]), way(201, 25.01), way(202, 25.02)],
+    }, [], [ENTRY, alt])
+    expect(missingLoops).toEqual(['環騎臺北市區替代道路：研究院路-莊敬隧道段'])
+  })
+
+  it('publishes 北臺濱海環線 (西向) as a link route and leaves 東向 out', () => {
+    const elements = [
+      ...LOOP_ROUTES.map((loop, i) => rel(10 + i, loop.name, [300 + i])),
+      ...LOOP_ROUTES.map((_, i) => way(300 + i, 25.1 + i * 0.01)),
+      rel(20, '北臺濱海環線 (東向)', [399]), way(399, 25.2),
+    ]
+    const { routes, missingLoops } = buildRoutes({ elements }, [], LOOP_ROUTES)
+    expect(missingLoops).toEqual([])
+    expect(routes.find((r) => r.name === '北臺濱海環線（環島1-1）')?.kind).toBe('link')
+    expect(routes.some((r) => r.name.startsWith('北臺濱海環線 (東向)'))).toBe(false)
+    expect(routes.flatMap((r) => r.lines).some((l) => l[0][0] === 25.2)).toBe(false)
   })
 
   it('reports no missing loops when no loop list is given', () => {

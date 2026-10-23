@@ -315,6 +315,7 @@
 {"name":null,"wheelchair":"yes","changing_table":"no","unisex":"yes","fee":"no","lat":25.01918,"lng":121.51643},
 {"name":null,"wheelchair":"yes","changing_table":"no","unisex":"yes","fee":"no","lat":25.01918,"lng":121.51641},
 {"name":null,"wheelchair":"yes","changing_table":"no","unisex":"yes","fee":"no","lat":25.01918,"lng":121.51638},
+{"name":null,"wheelchair":null,"changing_table":null,"unisex":"yes","fee":null,"lat":24.95111,"lng":121.35634},
 {"name":null,"wheelchair":"yes","changing_table":null,"unisex":null,"fee":null,"lat":24.95827,"lng":121.53703},
 {"name":null,"wheelchair":null,"changing_table":null,"unisex":"yes","fee":"no","lat":24.95533,"lng":121.53678},
 {"name":null,"wheelchair":null,"changing_table":null,"unisex":null,"fee":null,"lat":25.11873,"lng":121.46242},
@@ -348,6 +349,6 @@
 {"kind":"sports_centre","name":"士林運動中心","fee":null,"lat":25.08942,"lng":121.52151},
 {"kind":"sports_centre","name":"蘆洲國民運動中心","fee":null,"lat":25.09111,"lng":121.46203},
 {"kind":"sports_centre","name":"大同運動中心","fee":null,"lat":25.06529,"lng":121.51636},
-{"kind":"sports_centre","name":"鶯歌國民運動中心","fee":null,"lat":24.95132,"lng":121.3576},
+{"kind":"sports_centre","name":"鶯歌國民運動中心","fee":null,"lat":24.95132,"lng":121.3577},
 {"kind":"sports_centre","name":"板橋國民運動中心","fee":null,"lat":25.02268,"lng":121.45766}
 ]}

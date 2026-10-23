@@ -64,7 +64,8 @@ const memberWays = (relation) => (relation.members ?? []).filter((m) => m.type =
 // members, ways with geometry). Relation routes are sorted by relation id and
 // followed by one bridge route per supplementary entry, then one link route per
 // loop entry, each in list order. A link route holds the loop relation's member
-// ways that no riverside or bridge relation lists. Supplementary entries that
+// ways that no riverside or bridge relation lists and no earlier link route
+// already holds, so overlapping loops draw each way once. Supplementary entries that
 // select no way are returned by name in `missingSupplements`, and loop entries
 // that match no relation or keep no way in `missingLoops`.
 export function buildRoutes(body, supplements = [], loops = []) {
@@ -90,15 +91,16 @@ export function buildRoutes(body, supplements = [], loops = []) {
     routes.push({ kind: 'bridge', name: supplement.label, lines: joinLines(selected.map((w) => ways.get(w.id))) })
   }
 
-  const publishedWays = new Set(published.flatMap(memberWays))
+  const usedWays = new Set(published.flatMap(memberWays))
   const missingLoops = []
   for (const loop of loops) {
     const refs = [...new Set(relations.filter((r) => r.tags?.name === loop.name).flatMap(memberWays))]
-      .filter((ref) => ways.has(ref) && !publishedWays.has(ref))
+      .filter((ref) => ways.has(ref) && !usedWays.has(ref))
     if (!refs.length) {
       missingLoops.push(loop.name)
       continue
     }
+    refs.forEach((ref) => usedWays.add(ref))
     routes.push({ kind: 'link', name: loop.label, lines: joinLines(refs.map((ref) => ways.get(ref))) })
   }
   return { routes, missingSupplements, missingLoops }

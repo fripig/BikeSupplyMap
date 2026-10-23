@@ -281,7 +281,7 @@ async function main() {
     showers: facilities.showers.length,
   })
   for (const name of missingSupplements) problems.push(`supplementary bridge ${name}: no way matches its name, highway and bridge=yes`)
-  for (const name of missingLoops) problems.push(`loop route ${name}: no relation with this name, or no way left outside riverside and bridge routes`)
+  for (const name of missingLoops) problems.push(`loop route ${name}: no relation with this name, or no way left outside riverside, bridge and earlier link routes`)
   if (problems.length) throw new Error(`refusing to publish incomplete data:\n  ${problems.join('\n  ')}`)
 
   await writeAllOrNothing({
