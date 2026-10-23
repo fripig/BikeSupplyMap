@@ -222,11 +222,11 @@ The data pipeline SHALL publish `public/data/routes.json` from the OSM `route=bi
 
 The supplementary bridge list is kept in the repository. Each entry has an OSM `name`, a `highway` value, and a display `label`. For each entry the pipeline SHALL select the ways inside the two cities tagged with exactly that `name` and `highway` and with `bridge=yes`, join them with the same rule, and publish them as a route with `kind: "bridge"` and `name` set to the entry's `label`. These routes SHALL follow the relation routes in list order. The first entry SHALL be `name` `重陽橋`, `highway` `secondary`, `label` `重陽橋（人行道）`.
 
-The loop route list is kept in the repository. Each entry has the OSM relation `name` of a loop route and a display `label`. For each entry the pipeline SHALL take the member ways of the `route=bicycle` relation with exactly that `name`, drop every way that is a member of a relation published as `kind: "riverside"` or `kind: "bridge"` or that is already in a link route published for an earlier entry of the list, join the remaining ways with the same rule, and publish them as a route with `kind: "link"` and `name` set to the entry's `label`. Link routes SHALL follow the supplementary bridge routes in list order. The list SHALL hold exactly these entries in this order: `環騎臺北` → `環騎臺北（連接道路）`; `環騎臺北市區替代道路：深南路-南深路段` → `環騎臺北替代道路（深南路-南深路段）`; `環騎臺北市區替代道路：市民大道-莊敬隧道段` → `環騎臺北替代道路（市民大道-莊敬隧道段）`; `環騎臺北市區替代道路：研究院路-莊敬隧道段` → `環騎臺北替代道路（研究院路-莊敬隧道段）`; `北臺濱海環線 (西向)` → `北臺濱海環線（環島1-1）`. No OSM way SHALL appear in more than one link route. A loop relation SHALL NOT be published as a riverside or bridge route because of its list entry, and link lines SHALL NOT be used for the riverside station classification.
+The loop route list is kept in the repository. Each entry has the OSM relation `name` of a loop route, a display `label`, and optionally `optional: true`. For each entry the pipeline SHALL take the member ways of the `route=bicycle` relation with exactly that `name`, drop every way that is a member of a relation published as `kind: "riverside"` or `kind: "bridge"` or that is already in a link route published for an earlier entry of the list, join the remaining ways with the same rule, and publish them as a route with `kind: "link"` and `name` set to the entry's `label`; a route from an optional entry SHALL also have `optional: true`, and a route from any other entry SHALL have no `optional` field. Link routes SHALL follow the supplementary bridge routes in list order. The list SHALL hold exactly these entries in this order: `環騎臺北` → `環騎臺北（連接道路）`; `環騎臺北市區替代道路：深南路-南深路段` → `環騎臺北替代道路（深南路-南深路段）`; `環騎臺北市區替代道路：市民大道-莊敬隧道段` → `環騎臺北替代道路（市民大道-莊敬隧道段）`; `環騎臺北市區替代道路：研究院路-莊敬隧道段` → `環騎臺北替代道路（研究院路-莊敬隧道段）`; `北臺濱海環線 (西向)` → `北臺濱海環線（環島1-1）`. Every entry except `環騎臺北` SHALL be optional. No OSM way SHALL appear in more than one link route. A loop relation SHALL NOT be published as a riverside or bridge route because of its list entry, and link lines SHALL NOT be used for the riverside station classification.
 
-`routes.json` SHALL also contain a `vending` array: every shop in the `vending` category whose distance to the nearest segment of any published route line (riverside, bridge, or link) is at most 200 meters, as objects with `name` (string or `null`), `vending` (the OSM `vending` tag value or `null`), `lat`, and `lng`, sorted by shop id.
+`routes.json` SHALL also contain a `vending` array: every shop in the `vending` category whose distance to the nearest segment of any published route line without `optional` (riverside, bridge, or non-optional link) is at most 200 meters, as objects with `name` (string or `null`), `vending` (the OSM `vending` tag value or `null`), `lat`, and `lng`, sorted by shop id. Each optional link route SHALL have its own `vending` array in the same shape and order: every vending shop within 200 meters of that route's lines that is not in the top-level array. A shop within 200 meters of two optional routes SHALL appear in both of their arrays.
 
-The pipeline SHALL exit with a non-zero status and SHALL NOT modify any file in `public/data/` when fewer than 10 bridge routes are found among the relations, when any supplementary bridge entry selects no way, or when any loop route entry matches no relation or leaves no way after the riverside, bridge and earlier link ways are dropped. On success `public/data/meta.json` SHALL include `counts.bridgeRoutes` (relation bridge routes) and `counts.routeVending` (the length of the `vending` array).
+The pipeline SHALL exit with a non-zero status and SHALL NOT modify any file in `public/data/` when fewer than 10 bridge routes are found among the relations, when any supplementary bridge entry selects no way, or when any loop route entry matches no relation or leaves no way after the riverside, bridge and earlier link ways are dropped. On success `public/data/meta.json` SHALL include `counts.bridgeRoutes` (relation bridge routes) and `counts.routeVending` (the length of the top-level `vending` array).
 
 #### Scenario: Route selection and kinds
 
@@ -311,6 +311,20 @@ The pipeline SHALL exit with a non-zero status and SHALL NOT modify any file in 
 - **WHEN** a station lies 50 m from a link line and more than 200 m from every riverside route line
 - **THEN** the station is published with `riverside: false`
 
+#### Scenario: Optional loops carry their own vending machines
+
+- **WHEN** vending shops lie as below and `北臺濱海環線（環島1-1）` and `環騎臺北替代道路（市民大道-莊敬隧道段）` are optional link routes
+- **THEN** each shop is published as listed
+
+##### Example: vending placement
+
+| Shop | Near (within 200 m) | Published in |
+| ---- | ------------------- | ------------ |
+| v1 | a riverside line and `北臺濱海環線（環島1-1）` | top-level `vending` only |
+| v2 | `北臺濱海環線（環島1-1）` only | that route's `vending` only |
+| v3 | `北臺濱海環線（環島1-1）` and `環騎臺北替代道路（市民大道-莊敬隧道段）` | both routes' `vending` |
+| v4 | no route line | nowhere |
+
 #### Scenario: Vending machines near routes
 
 - **WHEN** vending shops lie 150 m and 250 m from the nearest route line, and a third lies 120 m from a link line and more than 200 m from every riverside and bridge line
@@ -318,24 +332,24 @@ The pipeline SHALL exit with a non-zero status and SHALL NOT modify any file in 
 
 
 <!-- @trace
-source: add-more-loop-routes
+source: make-loop-routes-selectable
 updated: 2026-10-24
 code:
-  - public/data/routes.json
-  - README.md
-  - scripts/lib/loop-routes.js
-  - public/data/stations.json
-  - public/data/meta.json
+  - app/components/SupplyMap.client.vue
   - scripts/lib/routes.js
-  - public/data/shelters.json
+  - public/data/routes.json
+  - app/pages/index.vue
+  - README.md
+  - app/utils/load-data.ts
+  - app/components/MapControls.vue
+  - public/data/meta.json
   - scripts/fetch-data.js
-  - public/data/facilities.json
-  - public/data/cycling.json
-  - public/data/shops.json
+  - scripts/lib/loop-routes.js
 tests:
   - scripts/fetch-data.test.js
-  - scripts/lib/routes.test.js
   - e2e/map.spec.ts
+  - app/components/MapControls.test.ts
+  - scripts/lib/routes.test.js
 -->
 
 ---
