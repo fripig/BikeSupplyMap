@@ -58,6 +58,12 @@ export function routeKind(tags = {}) {
   return null
 }
 
+// A one-line loop's two ends, where it leaves and rejoins the routes drawn on
+// load; a loop broken into several lines has no meaningful ends.
+const lineTips = (lines) => (lines.length === 1
+  ? [lines[0][0], lines[0][lines[0].length - 1]].map(([lat, lng]) => ({ kind: 'tip', name: null, lat, lng }))
+  : [])
+
 const memberWays = (relation) => (relation.members ?? []).filter((m) => m.type === 'way').map((m) => m.ref)
 
 // Builds routes.json content from the route query response (relations with
@@ -102,7 +108,7 @@ export function buildRoutes(body, supplements = [], loops = []) {
     }
     refs.forEach((ref) => usedWays.add(ref))
     const lines = joinLines(refs.map((ref) => ways.get(ref)))
-    routes.push(loop.optional ? { kind: 'link', name: loop.label, optional: true, lines } : { kind: 'link', name: loop.label, lines })
+    routes.push(loop.optional ? { kind: 'link', name: loop.label, optional: true, lines, stops: lineTips(lines) } : { kind: 'link', name: loop.label, lines })
   }
   return { routes, missingSupplements, missingLoops }
 }

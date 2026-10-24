@@ -8,7 +8,7 @@ import { buildCyclingLayer } from './lib/cycling-layer.js'
 import { classifyRiverside, riversideSegments } from './lib/riverside.js'
 import { BRIDGE_SUPPLEMENTS, supplementClauses } from './lib/bridge-supplements.js'
 import { LOOP_ROUTES } from './lib/loop-routes.js'
-import { TOUR_ROUTES, tourFromPage, tourLines } from './lib/tour-routes.js'
+import { TOUR_ROUTES, tourFromPage, tourLines, tourStops } from './lib/tour-routes.js'
 import { buildRoutes, splitRouteVending } from './lib/routes.js'
 import { bridgeSpots, shelterSpots } from './lib/shelters.js'
 import { showerSpots, toiletSpots } from './lib/facilities.js'
@@ -189,7 +189,9 @@ async function fetchTourRoute({ id, name }) {
   const { lines, error } = tourLines(tour)
   if (error) throw new Error(`${label}: ${error}`)
   if (!lines.length) throw new Error(`${label}: no line with 2 or more points`)
-  return { kind: 'link', name, optional: true, lines }
+  const { stops, error: stopError } = tourStops(tour)
+  if (stopError) throw new Error(`${label}: ${stopError}`)
+  return { kind: 'link', name, optional: true, lines, stops }
 }
 
 // The tours in list order, one page at a time. Every failing tour is reported in

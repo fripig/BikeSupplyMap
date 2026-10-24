@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { TOUR_ROUTES, tourFromPage, tourLines } from './tour-routes.js'
-import { lineString, multiLineString, tourPage, tourRecord } from './tour-page.fixture.js'
+import { TOUR_ROUTES, tourFromPage, tourLines, tourStops } from './tour-routes.js'
+import { lineString, multiLineString, segment, tourPage, tourRecord } from './tour-page.fixture.js'
 
 describe('TOUR_ROUTES', () => {
   it('lists the four 雙北 tours in site id order', () => {
@@ -68,5 +68,51 @@ describe('tourLines', () => {
   it('returns no lines when every line has one point', () => {
     const tour = tourRecord('A01', '北海岸漫遊', [lineString([[121.5, 25.0], [121.5, 25.0]])])
     expect(tourLines(tour)).toEqual({ lines: [] })
+  })
+})
+
+describe('tourStops', () => {
+  const tourWith = (route) => tourRecord('A07', '淡水河金色水岸', [], route)
+
+  it('gives a one-segment tour a start and an end', () => {
+    const tour = tourWith([segment('臺北府城北門 - 捷運紅樹林車站', [[121.511094, 25.047777], [121.48, 25.1], [121.458594, 25.154821]])])
+    expect(tourStops(tour)).toEqual({ stops: [
+      { kind: 'start', name: '臺北府城北門', lat: 25.04778, lng: 121.51109 },
+      { kind: 'end', name: '捷運紅樹林車站', lat: 25.15482, lng: 121.45859 },
+    ] })
+  })
+
+  it('puts each via stop at the end of its own segment, even when the next one starts elsewhere', () => {
+    const tour = tourWith([
+      segment('松山車站 - 瑞芳老街', [[121.57784, 25.04923], [121.67619, 25.08406]]),
+      segment('瑞芳老街 - 福隆車站', [[121.57784, 25.04923], [121.94487, 25.01657]]),
+    ])
+    expect(tourStops(tour)).toEqual({ stops: [
+      { kind: 'start', name: '松山車站', lat: 25.04923, lng: 121.57784 },
+      { kind: 'via', name: '瑞芳老街', lat: 25.08406, lng: 121.67619 },
+      { kind: 'end', name: '福隆車站', lat: 25.01657, lng: 121.94487 },
+    ] })
+  })
+
+  it('reports a segment name without " - "', () => {
+    const tour = tourWith([segment('臺北府城北門至捷運紅樹林車站', [[121.5, 25.0], [121.4, 25.1]])])
+    expect(tourStops(tour)).toEqual({ error: 'segment name 臺北府城北門至捷運紅樹林車站 is not "<from> - <to>"' })
+  })
+
+  it('reports segments that do not chain', () => {
+    const tour = tourWith([
+      segment('松山車站 - 白沙灣', [[121.5, 25.0], [121.5, 25.2]]),
+      segment('淡水 - 基隆車站', [[121.5, 25.2], [121.7, 25.1]]),
+    ])
+    expect(tourStops(tour)).toEqual({ error: 'segment 2 starts at 淡水, not 白沙灣' })
+  })
+
+  it('reports an invalid stop position', () => {
+    const tour = tourWith([segment('甲 - 乙', [[0, 25.0], [121.5, 25.1]])])
+    expect(tourStops(tour)).toEqual({ error: 'invalid position' })
+  })
+
+  it('reports a tour without segments', () => {
+    expect(tourStops(tourWith([]))).toEqual({ error: 'no segments' })
   })
 })

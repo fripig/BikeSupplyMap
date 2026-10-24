@@ -77,3 +77,30 @@ export function tourLines(tour) {
   }
   return { lines }
 }
+
+const SEGMENT_SEPARATOR = ' - '
+
+// The tour's start, the end of every day segment but the last (via), and its
+// end, each taken from that segment's own point list and named from the
+// segment's `<from> - <to>` name. Segment names must chain: each segment starts
+// where the previous one ends.
+export function tourStops(tour) {
+  const segments = tour.route ?? []
+  if (!segments.length) return { error: 'no segments' }
+  const stops = []
+  let previousTo
+  for (const [i, { name, geometry: points = [] }] of segments.entries()) {
+    const parts = String(name).split(SEGMENT_SEPARATOR)
+    if (parts.length !== 2 || !parts[0].trim() || !parts[1].trim()) return { error: `segment name ${name} is not "<from> - <to>"` }
+    const [from, to] = parts.map((p) => p.trim())
+    if (i > 0 && from !== previousTo) return { error: `segment ${i + 1} starts at ${from}, not ${previousTo}` }
+    previousTo = to
+    const first = points[0]
+    const last = points[points.length - 1]
+    if (![first, last].every((p) => p && validPosition([p.Lng, p.Lat]))) return { error: 'invalid position' }
+    const at = (p) => ({ lat: round5(p.Lat), lng: round5(p.Lng) })
+    if (i === 0) stops.push({ kind: 'start', name: from, ...at(first) })
+    stops.push({ kind: i === segments.length - 1 ? 'end' : 'via', name: to, ...at(last) })
+  }
+  return { stops }
+}

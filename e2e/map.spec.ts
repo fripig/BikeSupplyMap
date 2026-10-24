@@ -1,9 +1,10 @@
 import { expect, test, type Page } from '@playwright/test'
 import { shelterLabel, showerLabel, toiletLabel, vendingLabel } from '../app/utils/cycling'
 import { haversineMeters } from '../app/utils/geo'
+import { formatDistance } from '../app/utils/format'
 import { mapsPlaceUrl } from '../app/utils/links'
 import type { FacilityData, RouteVending, ShelterData } from '../app/utils/load-data'
-import { isVendingTeal, loadRoutes, loadStations, nextFrames, openMap, setView, settleMap, toPagePoint, type LatLng } from './helpers'
+import { isCanvasColor, isVendingTeal, loadRoutes, loadStations, nextFrames, openMap, setView, settleMap, toPagePoint, type LatLng } from './helpers'
 
 const legend = (page: Page) => page.locator('.cycling-legend')
 const vendingChip = (page: Page) => page.getByRole('button', { name: '自動販賣機' })
@@ -202,6 +203,53 @@ test('turning the 淡水河金色水岸 tour on frames it and its line shows the
   expect(framed).toBe(true)
   await clickAt(page, at)
   await expect(popup(page)).toHaveText(name)
+})
+
+const TAMSUI = '淡水河金色水岸'
+const LOOP_RED = '#f03e3e'
+const stopMarker = (page: Page, label: string) => page.locator(`.route-stop-icon[title="${label}"]`)
+
+test('a shown loop is drawn in the highlight color above the riverside line it runs on', async ({ page }) => {
+  const { routes, vending } = await loadRoutes(page)
+  const tour = routes.find((r) => r.name === TAMSUI)!
+  const riverside = routes.filter((r) => r.kind === 'riverside').flatMap((r) => r.lines.flat())
+  const vendingNear = (p: LatLng) => [...vending, ...(tour.vending ?? [])].some((v) => haversineMeters({ lat: p[0], lng: p[1] }, v) < 40)
+  // A tour vertex that is also a riverside vertex, clear of vending icons and
+  // away from the tour's ends, where the stop markers sit.
+  const points = tour.lines.flatMap((line) => line.slice(5, -5))
+  const at = points.find((p) => !vendingNear(p) && riverside.some((q) => haversineMeters({ lat: p[0], lng: p[1] }, { lat: q[0], lng: q[1] }) < 2))
+  if (!at) throw new Error(`${TAMSUI} shares no vertex with a riverside line`)
+  await setView(page, at, 17)
+  expect(await isCanvasColor(page, await toPagePoint(page, at), LOOP_RED)).toBe(false)
+  await loopSwitch(page, TAMSUI).click()
+  await settleMap(page)
+  await setView(page, at, 17)
+  expect(await isCanvasColor(page, await toPagePoint(page, at), LOOP_RED)).toBe(true)
+})
+
+test('a tour shows its start and end markers while its switch is on', async ({ page }) => {
+  await expect(stopMarker(page, '起點：臺北府城北門')).toHaveCount(0)
+  await loopSwitch(page, TAMSUI).click()
+  await expect(stopMarker(page, '起點：臺北府城北門')).toHaveCount(1)
+  await expect(stopMarker(page, '終點：捷運紅樹林車站')).toHaveCount(1)
+  await loopSwitch(page, TAMSUI).click()
+  await expect(stopMarker(page, '起點：臺北府城北門')).toHaveCount(0)
+  await expect(stopMarker(page, '終點：捷運紅樹林車站')).toHaveCount(0)
+})
+
+test('a stop popup offers the nearest YouBike station and selects it', async ({ page }) => {
+  const start = (await loadRoutes(page)).routes.find((r) => r.name === TAMSUI)!.stops!.find((s) => s.kind === 'start')!
+  const stations = await loadStations(page)
+  const nearest = stations.reduce((a, b) => (haversineMeters(start, b) < haversineMeters(start, a) ? b : a))
+  await loopSwitch(page, TAMSUI).click()
+  await settleMap(page)
+  await stopMarker(page, '起點：臺北府城北門').click()
+  await expect(popup(page)).toContainText('起點：臺北府城北門')
+  await expect(popup(page)).toContainText(`最近的 YouBike：${nearest.name}（${formatDistance(haversineMeters(start, nearest))}）`)
+  await expect(popup(page).getByRole('link', { name: '在 Google 地圖開啟' })).toHaveAttribute('href', mapsPlaceUrl(start))
+  await popup(page).getByRole('button', { name: '選這個站' }).click()
+  await expect(popup(page)).toHaveCount(0)
+  await expect(page.locator('.station-name')).toHaveText(nearest.name)
 })
 
 test('the footer credits 交通部自行車旅遊網 for the tour routes', async ({ page }) => {

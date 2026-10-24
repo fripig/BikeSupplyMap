@@ -65,14 +65,18 @@ export async function toPagePoint(page: Page, at: LatLng) {
   }, at)
 }
 
-// Whether the map canvas pixel at a page point is the vending icon fill
-// (#0c8599), within 12 on each RGB channel.
-export const isVendingTeal = (page: Page, point: { x: number, y: number }) => page.evaluate(({ x, y }) => {
+// Whether the map canvas pixel at a page point is the color `hex` (#rrggbb),
+// within 12 on each RGB channel.
+export const isCanvasColor = (page: Page, point: { x: number, y: number }, hex: string) => page.evaluate(({ x, y, hex }) => {
   const canvas = document.elementsFromPoint(x, y).find((e): e is HTMLCanvasElement => e instanceof HTMLCanvasElement)
   if (!canvas) return false
   const box = canvas.getBoundingClientRect()
   const px = Math.round((x - box.left) * (canvas.width / box.width))
   const py = Math.round((y - box.top) * (canvas.height / box.height))
   const [r, g, b] = canvas.getContext('2d')!.getImageData(px, py, 1, 1).data
-  return Math.abs(r! - 0x0c) <= 12 && Math.abs(g! - 0x85) <= 12 && Math.abs(b! - 0x99) <= 12
-}, point)
+  const want = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16))
+  return [r!, g!, b!].every((v, i) => Math.abs(v - want[i]!) <= 12)
+}, { ...point, hex })
+
+// Whether the map canvas pixel at a page point is the vending icon fill (#0c8599).
+export const isVendingTeal = (page: Page, point: { x: number, y: number }) => isCanvasColor(page, point, '#0c8599')

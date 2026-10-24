@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-24T02:38:11.193Z",
+  "generatedAt": "2026-10-24T04:39:31.015Z",
   "counts": {
     "stations": 3378,
     "riversideStations": 327,
@@ -10,8 +10,8 @@
       "grocery": 444,
       "vending": 189
     },
-    "cyclingPaths": 1264,
-    "cyclingPoints": 3778,
+    "cyclingPaths": 1322,
+    "cyclingPoints": 3993,
     "bridgeRoutes": 19,
     "routeVending": 72,
     "shelters": {

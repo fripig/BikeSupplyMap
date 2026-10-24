@@ -145,7 +145,18 @@ describe('buildRoutes loop routes', () => {
     }, [], [ENTRY, { ...ALT, optional: true }])
     const [plain, optional] = routes.filter((r) => r.kind === 'link')
     expect(Object.keys(plain)).toEqual(['kind', 'name', 'lines'])
-    expect(optional).toEqual({ kind: 'link', name: ALT.label, optional: true, lines: [[[25.02, 121.5], [25.02, 121.501]]] })
+    expect(optional).toEqual({
+      kind: 'link', name: ALT.label, optional: true, lines: [[[25.02, 121.5], [25.02, 121.501]]],
+      stops: [{ kind: 'tip', name: null, lat: 25.02, lng: 121.5 }, { kind: 'tip', name: null, lat: 25.02, lng: 121.501 }],
+    })
+  })
+
+  it('gives an optional loop of several lines no stops', () => {
+    const { routes } = buildRoutes({
+      elements: [rel(2, ALT.name, [202, 203]), way(202, 25.02), way(203, 25.03)],
+    }, [], [{ ...ALT, optional: true }])
+    expect(routes[0].lines).toHaveLength(2)
+    expect(routes[0].stops).toEqual([])
   })
 
   it('keeps only loop ways that no riverside or bridge relation lists', () => {

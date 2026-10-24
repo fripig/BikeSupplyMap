@@ -94,13 +94,23 @@ export interface FacilityData {
 }
 
 // A link route with `optional: true` is drawn only while its 環線 switch is on,
-// and carries its own route-side vending machines.
+// and carries its own route-side vending machines and stops.
 export interface BikeRoute {
   kind: 'riverside' | 'bridge' | 'link'
   name: string
   optional?: true
   lines: [number, number][][]
+  stops?: RouteStop[]
   vending?: RouteVending[]
+}
+
+// Where a tour starts, ends a day (via) or ends, or an unnamed end (tip) of a
+// one-line loop.
+export interface RouteStop {
+  kind: 'start' | 'via' | 'end' | 'tip'
+  name: string | null
+  lat: number
+  lng: number
 }
 
 // A food or drink vending machine within 200 m of a route; `vending` is the raw

@@ -6,6 +6,7 @@ import type { BikeRoute, CyclingData, FacilityData, RouteData, RouteVending, She
 import { CATEGORY_COLORS, CATEGORY_LABELS } from '~/utils/categories'
 import { formatDistance } from '~/utils/format'
 import { directionsUrl, mapsPlaceUrl } from '~/utils/links'
+import { nearestStation, stopMarkers } from '~/utils/route-stops'
 
 const props = defineProps<{
   stations: Station[]
@@ -42,7 +43,7 @@ let bikeRenderer: import('leaflet').Canvas | undefined
 let routeLayer: LayerGroup | undefined
 let vendingLayer: LayerGroup | undefined
 // Optional loop routes by name, built the first time their 環線 switch is on.
-const loopLayers = new Map<string, { lines: LayerGroup, vending: LayerGroup }>()
+const loopLayers = new Map<string, { lines: LayerGroup, vending: LayerGroup, stops: LayerGroup }>()
 let shelterLayer: LayerGroup | undefined
 let toiletLayer: LayerGroup | undefined
 let showerLayer: LayerGroup | undefined
@@ -52,10 +53,12 @@ let legend: Control | undefined
 let legendEl: HTMLElement | undefined
 
 // Riverside, bridge and link routes are thick and shown on load, except optional
-// loops, which follow their 環線 switch; urban paths are thin.
+// loops, which follow their 環線 switch and are drawn in a highlight color no
+// other line uses, over a white casing; urban paths are thin.
 const RIVERSIDE_COLOR = '#1971c2'
 const BRIDGE_COLOR = '#ae3ec9'
 const LINK_COLOR = '#9c6644'
+const LOOP_COLOR = '#f03e3e'
 const CYCLING_COLOR = '#2f9e44'
 
 // A white line-drawn bicycle inside every station marker.
@@ -69,9 +72,11 @@ const FALLBACK_VIEW = { center: [25.0375, 121.5637] as [number, number], zoom: 1
 const escapeHtml = (s: string) =>
   s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!)
 
-// Popup for a place icon: its text, then a link showing the place in Google Maps.
-const placePopup = (label: string, place: { lat: number, lng: number }) =>
-  `${escapeHtml(label)}<br><a href="${mapsPlaceUrl(place)}" target="_blank" rel="noopener">在 Google 地圖開啟</a>`
+// A link showing a place in Google Maps, ending every place and stop popup.
+const mapsLink = (place: { lat: number, lng: number }) =>
+  `<a href="${mapsPlaceUrl(place)}" target="_blank" rel="noopener">在 Google 地圖開啟</a>`
+// Popup for a place icon: its text, then the Google Maps link.
+const placePopup = (label: string, place: { lat: number, lng: number }) => `${escapeHtml(label)}<br>${mapsLink(place)}`
 
 onMounted(async () => {
   L = (await import('leaflet')).default
@@ -180,12 +185,14 @@ watch(() => props.nearby, drawSelection)
 const renderer = () => (bikeRenderer ??= L.canvas({ padding: 0.3 }))
 
 // Adds a route's joined lines to `layer`, one polyline each; bridge and link
-// lines open a popup with the route name.
+// lines open a popup with the route name. Optional loops get a white casing
+// under each line.
 function addRouteLines(route: BikeRoute, layer: LayerGroup) {
   const named = route.kind !== 'riverside'
-  const color = route.kind === 'bridge' ? BRIDGE_COLOR : route.kind === 'link' ? LINK_COLOR : RIVERSIDE_COLOR
+  const color = route.optional ? LOOP_COLOR : route.kind === 'bridge' ? BRIDGE_COLOR : route.kind === 'link' ? LINK_COLOR : RIVERSIDE_COLOR
   for (const line of route.lines) {
-    const polyline = L.polyline(line, { renderer: renderer(), interactive: named, weight: 6, opacity: 0.9, color })
+    if (route.optional) L.polyline(line, { renderer: renderer(), interactive: false, weight: 10, opacity: 1, color: '#fff' }).addTo(layer)
+    const polyline = L.polyline(line, { renderer: renderer(), interactive: named, weight: 6, opacity: route.optional ? 1 : 0.9, color })
     if (named) polyline.bindPopup(escapeHtml(route.name))
     polyline.addTo(layer)
   }
@@ -204,12 +211,59 @@ function vendingMarkers(items: RouteVending[]) {
   return layer
 }
 
+// Stop markers of a loop: 起, 經, 終 or 端 icons above the station markers, each
+// opening a popup with its label, the nearest YouBike station with a button
+// selecting it, and a Google Maps link.
+function stopMarkerLayer(route: BikeRoute) {
+  const layer = L.layerGroup()
+  for (const marker of stopMarkers(route.stops ?? [])) {
+    const icon = L.divIcon({ className: 'route-stop-icon', iconSize: [marker.glyph.length * 12 + 6, 18], html: marker.glyph })
+    const stop = L.marker([marker.lat, marker.lng], { icon, zIndexOffset: 1000, title: marker.label })
+    // Start and end markers often sit near a map corner, where the legend would
+    // cover the popup's 選這個站 button. Registered before bindPopup, this runs
+    // before the popup opens, so the popup's own auto-pan keeps it above the
+    // legend's height from the bottom edge.
+    stop.on('click', () => {
+      const legendHeight = legendEl?.isConnected ? legendEl.offsetHeight : 0
+      stop.getPopup()!.options.autoPanPaddingBottomRight = L.point(16, legendHeight + 16)
+    })
+    stop.bindPopup(() => stopPopup(marker.label, marker)).addTo(layer)
+  }
+  return layer
+}
+
+// Built when the popup opens, so the nearest station comes from the stations
+// loaded by then.
+function stopPopup(label: string, at: { lat: number, lng: number }) {
+  const el = document.createElement('div')
+  el.innerHTML = `${escapeHtml(label)}<br>`
+  const nearest = nearestStation(at, props.stations)
+  if (nearest) {
+    el.append(`最近的 YouBike：${nearest.station.name}（${formatDistance(nearest.meters)}）`)
+    const button = document.createElement('button')
+    button.type = 'button'
+    button.className = 'route-stop-select'
+    button.textContent = '選這個站'
+    button.addEventListener('click', () => {
+      map?.closePopup()
+      emit('select', nearest.station)
+    })
+    el.append(' ', button)
+  } else {
+    el.append('2 km 內沒有 YouBike 站')
+  }
+  el.insertAdjacentHTML('beforeend', `<br>${mapsLink(at)}`)
+  return el
+}
+
 // Everything shares one canvas, drawn in the order layers were added. After
-// route lines are added, re-add the urban paths and every shown vending layer
-// so the thin green lines and the vending icons stay on top of them.
+// route lines are added, re-add the urban paths, then every shown loop's
+// lines, then every shown vending layer, so the thin green lines stay over the
+// routes drawn on load, shown loops over both, and vending icons on top.
 function raiseOverRoutes() {
   if (!map) return
-  for (const layer of [cyclingPaths, vendingLayer, ...[...loopLayers.values()].map((l) => l.vending)]) {
+  const loops = [...loopLayers.values()]
+  for (const layer of [cyclingPaths, ...loops.map((l) => l.lines), vendingLayer, ...loops.map((l) => l.vending)]) {
     if (layer && map.hasLayer(layer)) {
       map.removeLayer(layer)
       map.addLayer(layer)
@@ -243,16 +297,20 @@ function updateLoops() {
     const on = props.shownLoops.has(route.name)
     let layers = loopLayers.get(route.name)
     if (on && !layers) {
-      layers = { lines: L.layerGroup(), vending: vendingMarkers(route.vending ?? []) }
+      layers = { lines: L.layerGroup(), vending: vendingMarkers(route.vending ?? []), stops: stopMarkerLayer(route) }
       addRouteLines(route, layers.lines)
       loopLayers.set(route.name, layers)
     }
     if (!layers) continue
     if (on && !map.hasLayer(layers.lines)) {
       map.addLayer(layers.lines)
+      map.addLayer(layers.stops)
       added.push(route)
     }
-    if (!on && map.hasLayer(layers.lines)) map.removeLayer(layers.lines)
+    if (!on && map.hasLayer(layers.lines)) {
+      map.removeLayer(layers.lines)
+      map.removeLayer(layers.stops)
+    }
   }
   updateVendingLayer()
   if (added.length) {
@@ -377,7 +435,10 @@ function updateCyclingLayer() {
   const { paths: on, points: showPoints } = cyclingVisibility(props.showCycling, props.cycling !== null, map.getZoom())
   if (on && !cyclingPaths) buildCyclingLayers(props.cycling!)
   if (cyclingPaths && cyclingPoints) {
-    if (on && !map.hasLayer(cyclingPaths)) map.addLayer(cyclingPaths)
+    if (on && !map.hasLayer(cyclingPaths)) {
+      map.addLayer(cyclingPaths)
+      raiseOverRoutes()
+    }
     if (!on && map.hasLayer(cyclingPaths)) map.removeLayer(cyclingPaths)
     if (showPoints && !map.hasLayer(cyclingPoints)) map.addLayer(cyclingPoints)
     if (!showPoints && map.hasLayer(cyclingPoints)) map.removeLayer(cyclingPoints)
@@ -442,6 +503,25 @@ watch(() => [props.selected, props.radius] as const, () => {
   color: #fff;
   font-size: 0.75rem;
   font-weight: 700;
+}
+
+.route-stop-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f03e3e;
+  border: 2px solid #fff;
+  border-radius: 9px;
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 35%);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.route-stop-select {
+  margin-left: 4px;
+  font: inherit;
 }
 
 .facility-icon {

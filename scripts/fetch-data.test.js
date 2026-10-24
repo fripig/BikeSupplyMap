@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { LOOP_ROUTES } from './lib/loop-routes.js'
 import { TOUR_ROUTES } from './lib/tour-routes.js'
-import { lineString, tourPage, tourRecord } from './lib/tour-page.fixture.js'
+import { lineString, segment, tourPage, tourRecord } from './lib/tour-page.fixture.js'
 
 // Runs scripts/fetch-data.js end to end against a local fake of the three sources.
 const SCRIPT = fileURLToPath(new URL('./fetch-data.js', import.meta.url))
@@ -278,7 +278,11 @@ describe('fetch-data', () => {
     expect(routes[41]).toEqual({ kind: 'link', name: '環騎臺北（連接道路）', lines: [[[24.8, 121.3], [24.801, 121.3]]] })
     expect(routes.slice(41, 46).map((r) => r.name)).toEqual(LOOP_ROUTES.map((l) => l.label))
     expect(routes.slice(42).every((r) => r.optional === true && Array.isArray(r.vending))).toBe(true)
-    expect(routes[45]).toEqual({ kind: 'link', name: '北臺濱海環線（環島1-1）', optional: true, lines: [[[24.84, 121.3], [24.841, 121.3]]], vending: [] })
+    expect(routes[45]).toEqual({
+      kind: 'link', name: '北臺濱海環線（環島1-1）', optional: true, lines: [[[24.84, 121.3], [24.841, 121.3]]],
+      stops: [{ kind: 'tip', name: null, lat: 24.84, lng: 121.3 }, { kind: 'tip', name: null, lat: 24.841, lng: 121.3 }],
+      vending: [],
+    })
     expect(data['routes.json'].split('\n')[46]).toBe(JSON.stringify(routes[45]) + ',')
     expect(routes[0]).toEqual({ kind: 'riverside', name: '測試河0自行車道', lines: [[[25.03, 121.53], [25.03, 121.6]]] })
     expect(routes[21]).toEqual({ kind: 'bridge', name: '測試0橋自行車道', lines: [[[24.9, 121.4], [24.901, 121.4]]] })
@@ -293,10 +297,15 @@ describe('fetch-data', () => {
     const data = await readData()
     const { routes, vending } = JSON.parse(data['routes.json'])
     expect(routes.slice(46).map((r) => r.name)).toEqual(TOUR_ROUTES.map((t) => t.name))
-    expect(routes[46]).toEqual({ kind: 'link', name: '北海岸漫遊', optional: true, lines: [[[24.7, 121.9], [24.7, 121.901]]], vending: [] })
+    expect(routes[46]).toEqual({
+      kind: 'link', name: '北海岸漫遊', optional: true, lines: [[[24.7, 121.9], [24.7, 121.901]]],
+      stops: [{ kind: 'start', name: '起點站', lat: 24.7, lng: 121.9 }, { kind: 'end', name: '終點站', lat: 24.7, lng: 121.901 }],
+      vending: [],
+    })
     // A07 runs through the 20 far vending machines, which are not top-level.
     expect(routes[49]).toEqual({
       kind: 'link', name: '淡水河金色水岸', optional: true, lines: [[[24.5, 121.53], [24.5, 121.55]]],
+      stops: [{ kind: 'start', name: '起點站', lat: 24.5, lng: 121.53 }, { kind: 'end', name: '終點站', lat: 24.5, lng: 121.55 }],
       vending: Array.from({ length: 20 }, () => ({ name: null, vending: 'drinks', lat: 24.5, lng: 121.54 })),
     })
     expect(data['routes.json'].split('\n')[50]).toBe(JSON.stringify(routes[49]))
@@ -329,6 +338,26 @@ describe('fetch-data', () => {
     const { code, stderr } = await run()
     expect(code).not.toBe(0)
     expect(stderr).toContain('tour route A03 舊草嶺環線: page names it 舊草嶺隧道環線')
+    expect(await readData()).toEqual(SEED)
+  })
+
+  it('rejects a tour whose segment name is not "<from> - <to>" and keeps previous data', async () => {
+    const track = [[121.53, 24.5], [121.55, 24.5]]
+    responses['/taiwanbike/bikeRoute/tour/A07'] = () => [200, tourPage(tourRecord('A07', '淡水河金色水岸', [lineString(track)], [segment('臺北府城北門至捷運紅樹林車站', track)]))]
+    const { code, stderr } = await run()
+    expect(code).not.toBe(0)
+    expect(stderr).toContain('tour route A07 淡水河金色水岸: segment name 臺北府城北門至捷運紅樹林車站 is not "<from> - <to>"')
+    expect(await readData()).toEqual(SEED)
+  })
+
+  it('rejects a tour whose segments do not chain and keeps previous data', async () => {
+    const track = [[121.9, 24.7], [121.901, 24.7]]
+    responses['/taiwanbike/bikeRoute/tour/A01'] = () => [200, tourPage(tourRecord('A01', '北海岸漫遊', [lineString(track)], [
+      segment('松山車站 - 白沙灣', track), segment('淡水 - 基隆車站', track),
+    ]))]
+    const { code, stderr } = await run()
+    expect(code).not.toBe(0)
+    expect(stderr).toContain('tour route A01 北海岸漫遊: segment 2 starts at 淡水, not 白沙灣')
     expect(await readData()).toEqual(SEED)
   })
 
