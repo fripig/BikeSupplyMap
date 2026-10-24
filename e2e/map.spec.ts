@@ -98,13 +98,14 @@ const loopGroup = (page: Page) => page.locator('fieldset', { has: page.locator('
 const loopSwitch = (page: Page, name: string) => loopGroup(page).locator('label.switch', { hasText: name })
 const popup = (page: Page) => page.locator('.leaflet-popup-content')
 
-// The 北臺濱海環線 route and the middle point of its longest line.
-async function coastRoute(page: Page) {
-  const route = (await loadRoutes(page)).routes.find((r) => r.optional && r.name === COAST)
-  if (!route) throw new Error(`routes.json has no optional route named ${COAST}`)
+// An optional route and the middle point of its longest line.
+async function optionalRoute(page: Page, name: string) {
+  const route = (await loadRoutes(page)).routes.find((r) => r.optional && r.name === name)
+  if (!route) throw new Error(`routes.json has no optional route named ${name}`)
   const line = route.lines.reduce((a, b) => (b.length > a.length ? b : a))
   return { route, at: line[Math.floor(line.length / 2)]! }
 }
+const coastRoute = (page: Page) => optionalRoute(page, COAST)
 
 async function clickAt(page: Page, at: LatLng) {
   await setView(page, at, 17)
@@ -124,6 +125,10 @@ test('optional loops are listed in 環線, all off, and not drawn on load', asyn
     '環騎臺北替代道路（市民大道-莊敬隧道段）',
     '環騎臺北替代道路（研究院路-莊敬隧道段）',
     COAST,
+    '北海岸漫遊',
+    '單車淡蘭極東2日遊',
+    '舊草嶺環線',
+    '淡水河金色水岸',
   ])
   const switches = loopGroup(page).getByRole('switch')
   await expect(loopGroup(page).locator('label.switch')).toHaveText(optional)
@@ -182,6 +187,27 @@ test('a loop\'s vending icons follow the 自動販賣機 toggle while the loop s
   expect(await vendingDrawnAt(page, [v.lat, v.lng])).toBe(true)
   await clickAt(page, at)
   await expect(popup(page)).toHaveText(COAST)
+})
+
+test('turning the 淡水河金色水岸 tour on frames it and its line shows the name', async ({ page }) => {
+  const name = '淡水河金色水岸'
+  const { route, at } = await optionalRoute(page, name)
+  await loopSwitch(page, name).click()
+  await expect(loopGroup(page).getByRole('switch', { name })).toBeChecked()
+  await settleMap(page)
+  const framed = await page.evaluate((pts) => {
+    const bounds = window.__supplyMap!.getBounds()
+    return pts.every((p) => bounds.contains(p))
+  }, route.lines.flat())
+  expect(framed).toBe(true)
+  await clickAt(page, at)
+  await expect(popup(page)).toHaveText(name)
+})
+
+test('the footer credits 交通部自行車旅遊網 for the tour routes', async ({ page }) => {
+  const credits = page.locator('footer.credits')
+  await expect(credits).toContainText('推薦遊程路線來源：交通部自行車旅遊網')
+  await expect(credits.getByRole('link', { name: '交通部自行車旅遊網' })).toHaveAttribute('href', 'https://taiwanbike.tw/bikeRoute/tour')
 })
 
 test('no 環線 group is shown when routes.json fails to load', async ({ page }) => {

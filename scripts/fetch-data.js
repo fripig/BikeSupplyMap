@@ -8,6 +8,7 @@ import { buildCyclingLayer } from './lib/cycling-layer.js'
 import { classifyRiverside, riversideSegments } from './lib/riverside.js'
 import { BRIDGE_SUPPLEMENTS, supplementClauses } from './lib/bridge-supplements.js'
 import { LOOP_ROUTES } from './lib/loop-routes.js'
+import { TOUR_ROUTES, tourFromPage, tourLines } from './lib/tour-routes.js'
 import { buildRoutes, splitRouteVending } from './lib/routes.js'
 import { bridgeSpots, shelterSpots } from './lib/shelters.js'
 import { showerSpots, toiletSpots } from './lib/facilities.js'
@@ -28,6 +29,7 @@ const OVERPASS_URLS = process.env.OVERPASS_URL
       'https://maps.mail.ru/osm/tools/overpass/api/interpreter',
       'https://overpass.kumi.systems/api/interpreter',
     ]
+const TAIWANBIKE_URL = process.env.TAIWANBIKE_URL ?? 'https://taiwanbike.tw'
 const USER_AGENT = 'BikeSupplyMap/0.1 (https://github.com/fripig/BikeSupplyMap)'
 const OUT_DIR = process.env.DATA_DIR ?? fileURLToPath(new URL('../public/data/', import.meta.url))
 
@@ -92,19 +94,25 @@ ${OVERPASS_AREA}
 );
 out center tags;`
 
-async function fetchJson(label, url, init = {}) {
-  let res
+// GETs or POSTs `url` and returns the response text. Network errors, timeouts
+// (including while the body is still arriving) and HTTP errors are thrown with
+// `label` in front.
+async function fetchText(label, url, { accept, timeoutMs, ...init } = {}) {
   try {
-    res = await fetch(url, {
+    const res = await fetch(url, {
       ...init,
-      headers: { 'User-Agent': USER_AGENT, Accept: 'application/json', ...init.headers },
-      signal: AbortSignal.timeout(200_000),
+      headers: { 'User-Agent': USER_AGENT, Accept: accept, ...init.headers },
+      signal: AbortSignal.timeout(timeoutMs),
     })
+    if (!res.ok) throw new Error(`HTTP ${res.status}`)
+    return await res.text()
   } catch (err) {
     throw new Error(`${label}: ${err.cause?.code ?? err.message}`)
   }
-  if (!res.ok) throw new Error(`${label}: HTTP ${res.status}`)
-  const text = await res.text()
+}
+
+async function fetchJson(label, url, init = {}) {
+  const text = await fetchText(label, url, { accept: 'application/json', timeoutMs: 200_000, ...init })
   try {
     return JSON.parse(text)
   } catch {
@@ -165,6 +173,40 @@ async function fetchOverpass(query) {
   throw lastError
 }
 
+// Reads one listed 自行車旅遊網 tour from its tour page as an optional link
+// route, or throws naming the tour and what is wrong with the page.
+async function fetchTourRoute({ id, name }) {
+  const label = `tour route ${id} ${name}`
+  const html = await fetchText(label, `${TAIWANBIKE_URL}/bikeRoute/tour/${id}`, { accept: 'text/html', timeoutMs: 60_000 })
+  let tour
+  try {
+    tour = tourFromPage(html, id)
+  } catch {
+    throw new Error(`${label}: no __NUXT_DATA__ payload`)
+  }
+  if (!tour) throw new Error(`${label}: ${html.includes('id="__NUXT_DATA__"') ? 'no tour with this id in the payload' : 'no __NUXT_DATA__ payload'}`)
+  if (tour.info.name !== name) throw new Error(`${label}: page names it ${tour.info.name}`)
+  const { lines, error } = tourLines(tour)
+  if (error) throw new Error(`${label}: ${error}`)
+  if (!lines.length) throw new Error(`${label}: no line with 2 or more points`)
+  return { kind: 'link', name, optional: true, lines }
+}
+
+// The tours in list order, one page at a time. Every failing tour is reported in
+// `problems`, so the run refuses to publish and names them all.
+async function fetchTourRoutes() {
+  const tours = []
+  const problems = []
+  for (const entry of TOUR_ROUTES) {
+    try {
+      tours.push(await fetchTourRoute(entry))
+    } catch (err) {
+      problems.push(err.message)
+    }
+  }
+  return { tours, problems }
+}
+
 async function fetchShops() {
   const body = await fetchOverpass(SHOPS_QUERY)
   return body.elements.map(classifyShop).filter(Boolean)
@@ -220,9 +262,10 @@ async function main() {
   // sees two heavy requests from us at once; the cycling layer also needs the
   // riverside route ways to leave them out, and the rain shelters and the
   // toilets and showers need the riverside route lines.
-  const [taipei, newTaipei, [shops, { riverside, routes, missingSupplements, missingLoops }, cycling, shelters, facilities]] = await Promise.all([
+  const [taipei, newTaipei, tourRoutes, [shops, { riverside, routes, missingSupplements, missingLoops }, cycling, shelters, facilities]] = await Promise.all([
     fetchTaipeiStations(),
     fetchNewTaipeiStations(),
+    fetchTourRoutes(),
     (async () => {
       const shops = await fetchShops()
       const bikeRoutes = await fetchBikeRoutes()
@@ -243,8 +286,9 @@ async function main() {
   const sortedShops = shops
     .map((s) => ({ ...s, lat: round6(s.lat), lng: round6(s.lng) }))
     .sort(byId)
-  // Optional loops carry their own vending; the top level covers routes drawn on load.
-  const { vending, routes: publishedRoutes } = splitRouteVending(routes, sortedShops)
+  // Tours follow the loop routes. Optional loops and tours carry their own
+  // vending; the top level covers routes drawn on load.
+  const { vending, routes: publishedRoutes } = splitRouteVending([...routes, ...tourRoutes.tours], sortedShops)
 
   const shelterCounts = { bridge: 0, shelter: 0 }
   for (const s of shelters) shelterCounts[s.kind]++
@@ -283,6 +327,7 @@ async function main() {
   })
   for (const name of missingSupplements) problems.push(`supplementary bridge ${name}: no way matches its name, highway and bridge=yes`)
   for (const name of missingLoops) problems.push(`loop route ${name}: no relation with this name, or no way left outside riverside, bridge and earlier link routes`)
+  problems.push(...tourRoutes.problems)
   if (problems.length) throw new Error(`refusing to publish incomplete data:\n  ${problems.join('\n  ')}`)
 
   await writeAllOrNothing({
@@ -299,6 +344,7 @@ async function main() {
   console.log(`stations: 臺北市 ${taipei.length}, 新北市 ${newTaipei.length}`)
   console.log(`riverside: ${riverside.routes.length} routes, ${riversideStations} stations`)
   console.log(`routes: ${routes.filter((r) => r.kind === 'riverside').length} riverside, ${bridgeRoutes} bridge, ${supplementLabels.size} supplementary bridge, ${routes.filter((r) => r.kind === 'link').length} link`)
+  console.log(`tours: ${tourRoutes.tours.map((t) => t.name).join(', ')}`)
   console.log(`route-side vending: ${vending.length}`)
   console.log(`toilets: ${facilities.toilets.length}, showers: ${facilities.showers.length}`)
   console.log(`rain shelters: ${shelterCounts.bridge} under bridges, ${shelterCounts.shelter} shelters`)

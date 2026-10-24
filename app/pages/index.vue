@@ -132,7 +132,8 @@ watch(selected, async () => {
         <p>
           店家與自行車道資料 ©
           <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap 貢獻者</a>（ODbL）；
-          站點資料來源：<a href="https://data.taipei/" target="_blank" rel="noopener">臺北市資料大平臺</a>、<a href="https://data.ntpc.gov.tw/" target="_blank" rel="noopener">新北市政府資料開放平臺</a>（政府資料開放授權條款）。
+          站點資料來源：<a href="https://data.taipei/" target="_blank" rel="noopener">臺北市資料大平臺</a>、<a href="https://data.ntpc.gov.tw/" target="_blank" rel="noopener">新北市政府資料開放平臺</a>（政府資料開放授權條款）；
+          推薦遊程路線來源：<a href="https://taiwanbike.tw/bikeRoute/tour" target="_blank" rel="noopener">交通部自行車旅遊網</a>（taiwanbike.tw）。
         </p>
       </footer>
     </aside>

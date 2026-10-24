@@ -6,6 +6,8 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import { LOOP_ROUTES } from './lib/loop-routes.js'
+import { TOUR_ROUTES } from './lib/tour-routes.js'
+import { lineString, tourPage, tourRecord } from './lib/tour-page.fixture.js'
 
 // Runs scripts/fetch-data.js end to end against a local fake of the three sources.
 const SCRIPT = fileURLToPath(new URL('./fetch-data.js', import.meta.url))
@@ -62,6 +64,16 @@ const routesBody = (n, bridges = 19, supplement = true, loop = true) => ({
     })),
   ],
 })
+
+// One tour page per TOUR_ROUTES entry, each a short line far from every
+// station; the last (A07) runs through the far vending machines at (24.5, 121.54).
+const tourTrack = (i) => (i === TOUR_ROUTES.length - 1
+  ? [[121.53, 24.5], [121.55, 24.5]]
+  : [[121.9, 24.7 + i * 0.01], [121.901, 24.7 + i * 0.01]])
+const tourPages = () => Object.fromEntries(TOUR_ROUTES.map(({ id, name }, i) => [
+  `/taiwanbike/bikeRoute/tour/${id}`,
+  () => [200, tourPage(tourRecord(id, name, [lineString(tourTrack(i))]))],
+]))
 
 // Rain shelters: `bridges` bridges crossing the riverside way about 70 m apart,
 // and `shelters` shelters 20 m north of it, plus a bus shelter that is left out.
@@ -122,7 +134,7 @@ beforeAll(async () => {
             : query.includes('"amenity"="toilets"') ? '/facilities'
           : url.pathname
     const [status, body] = responses[route](url)
-    res.writeHead(status, { 'Content-Type': 'application/json' })
+    res.writeHead(status, { 'Content-Type': route.startsWith('/taiwanbike/') ? 'text/html' : 'application/json' })
     res.end(typeof body === 'string' ? body : JSON.stringify(body))
   })
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve))
@@ -151,6 +163,7 @@ beforeEach(async () => {
     '/cycling': () => [200, cyclingBody(1000, 2000)],
     '/shelters': () => [200, sheltersBody()],
     '/facilities': () => [200, facilitiesBody()],
+    ...tourPages(),
   }
   const root = await mkdtemp(join(tmpdir(), 'fetch-data-test-'))
   dataDir = join(root, 'data')
@@ -167,6 +180,7 @@ function run() {
         TAIPEI_URL: `${baseUrl}/taipei`,
         NEW_TAIPEI_URL: `${baseUrl}/newtaipei`,
         OVERPASS_URL: `${baseUrl}/overpass`,
+        TAIWANBIKE_URL: `${baseUrl}/taiwanbike`,
         OVERPASS_RETRY_DELAY_MS: '0',
         DATA_DIR: dataDir,
       },
@@ -258,18 +272,78 @@ describe('fetch-data', () => {
     expect(stdout).toContain('routes: 21 riverside, 19 bridge, 1 supplementary bridge, 5 link')
     const data = await readData()
     const { routes } = JSON.parse(data['routes.json'])
-    expect(routes).toHaveLength(46)
+    expect(routes).toHaveLength(50)
     expect(routes[40]).toEqual({ kind: 'bridge', name: '重陽橋（人行道）', lines: [[[25.06, 121.49], [25.06, 121.491], [25.061, 121.492]]] })
     // The loop's riverside way 1 is left out; only its own way 5 remains.
     expect(routes[41]).toEqual({ kind: 'link', name: '環騎臺北（連接道路）', lines: [[[24.8, 121.3], [24.801, 121.3]]] })
-    expect(routes.slice(41).map((r) => r.name)).toEqual(LOOP_ROUTES.map((l) => l.label))
+    expect(routes.slice(41, 46).map((r) => r.name)).toEqual(LOOP_ROUTES.map((l) => l.label))
     expect(routes.slice(42).every((r) => r.optional === true && Array.isArray(r.vending))).toBe(true)
     expect(routes[45]).toEqual({ kind: 'link', name: '北臺濱海環線（環島1-1）', optional: true, lines: [[[24.84, 121.3], [24.841, 121.3]]], vending: [] })
-    expect(data['routes.json'].split('\n')[46]).toBe(JSON.stringify(routes[45]))
+    expect(data['routes.json'].split('\n')[46]).toBe(JSON.stringify(routes[45]) + ',')
     expect(routes[0]).toEqual({ kind: 'riverside', name: '測試河0自行車道', lines: [[[25.03, 121.53], [25.03, 121.6]]] })
     expect(routes[21]).toEqual({ kind: 'bridge', name: '測試0橋自行車道', lines: [[[24.9, 121.4], [24.901, 121.4]]] })
     expect(data['routes.json'].split('\n')[1]).toBe(JSON.stringify(routes[0]) + ',')
     expect(JSON.parse(data['meta.json']).counts.bridgeRoutes).toBe(19)
+  })
+
+  it('publishes the tours as optional link routes after the loop routes', async () => {
+    const { code, stdout } = await run()
+    expect(code).toBe(0)
+    expect(stdout).toContain(`tours: ${TOUR_ROUTES.map((t) => t.name).join(', ')}`)
+    const data = await readData()
+    const { routes, vending } = JSON.parse(data['routes.json'])
+    expect(routes.slice(46).map((r) => r.name)).toEqual(TOUR_ROUTES.map((t) => t.name))
+    expect(routes[46]).toEqual({ kind: 'link', name: '北海岸漫遊', optional: true, lines: [[[24.7, 121.9], [24.7, 121.901]]], vending: [] })
+    // A07 runs through the 20 far vending machines, which are not top-level.
+    expect(routes[49]).toEqual({
+      kind: 'link', name: '淡水河金色水岸', optional: true, lines: [[[24.5, 121.53], [24.5, 121.55]]],
+      vending: Array.from({ length: 20 }, () => ({ name: null, vending: 'drinks', lat: 24.5, lng: 121.54 })),
+    })
+    expect(data['routes.json'].split('\n')[50]).toBe(JSON.stringify(routes[49]))
+    expect(vending).toHaveLength(100)
+    expect(JSON.parse(data['meta.json']).counts.routeVending).toBe(100)
+  })
+
+  it('does not mark stations near a tour line as riverside', async () => {
+    // An A07 track about 50 m north of every fake New Taipei station.
+    responses['/taiwanbike/bikeRoute/tour/A07'] = () => [200, tourPage(tourRecord('A07', '淡水河金色水岸', [lineString([[121.45, 25.01045], [121.47, 25.01045]])]))]
+    const { code, stdout } = await run()
+    expect(code).toBe(0)
+    expect(stdout).toContain('riverside: 21 routes, 600 stations')
+    const data = await readData()
+    expect(JSON.parse(data['routes.json']).routes.at(-1).lines).toEqual([[[25.01045, 121.45], [25.01045, 121.47]]])
+    const stations = JSON.parse(data['stations.json'])
+    expect(stations.filter((s) => s.city === '新北市').every((s) => s.riverside === false)).toBe(true)
+  })
+
+  it('rejects a missing tour page and keeps previous data', async () => {
+    responses['/taiwanbike/bikeRoute/tour/A07'] = () => [404, 'not found']
+    const { code, stderr } = await run()
+    expect(code).not.toBe(0)
+    expect(stderr).toContain('tour route A07 淡水河金色水岸: HTTP 404')
+    expect(await readData()).toEqual(SEED)
+  })
+
+  it('rejects a renamed tour and keeps previous data', async () => {
+    responses['/taiwanbike/bikeRoute/tour/A03'] = () => [200, tourPage(tourRecord('A03', '舊草嶺隧道環線', [lineString(tourTrack(2))]))]
+    const { code, stderr } = await run()
+    expect(code).not.toBe(0)
+    expect(stderr).toContain('tour route A03 舊草嶺環線: page names it 舊草嶺隧道環線')
+    expect(await readData()).toEqual(SEED)
+  })
+
+  it('rejects tour pages without a usable track and names every one', async () => {
+    responses['/taiwanbike/bikeRoute/tour/A01'] = () => [200, '<html><body>維護中</body></html>']
+    responses['/taiwanbike/bikeRoute/tour/A02'] = () => [200, tourPage(tourRecord('A02', '單車淡蘭極東2日遊', [lineString([[0, 25], [121.6, 25.1]])]))]
+    responses['/taiwanbike/bikeRoute/tour/A03'] = () => [200, tourPage(tourRecord('A03', '舊草嶺環線', [lineString([[121.9, 25], [121.9, 25]])]))]
+    responses['/taiwanbike/bikeRoute/tour/A07'] = () => [200, tourPage(tourRecord('A01', '北海岸漫遊', []))]
+    const { code, stderr } = await run()
+    expect(code).not.toBe(0)
+    expect(stderr).toContain('tour route A01 北海岸漫遊: no __NUXT_DATA__ payload')
+    expect(stderr).toContain('tour route A02 單車淡蘭極東2日遊: invalid position')
+    expect(stderr).toContain('tour route A03 舊草嶺環線: no line with 2 or more points')
+    expect(stderr).toContain('tour route A07 淡水河金色水岸: no tour with this id in the payload')
+    expect(await readData()).toEqual(SEED)
   })
 
   it('publishes vending machines as shops and reports their count', async () => {
