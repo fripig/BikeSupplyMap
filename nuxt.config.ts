@@ -1,6 +1,15 @@
 const SITE_NAME = '雙北 YouBike 補給地圖'
 const SITE_URL = 'https://fripig.github.io/BikeSupplyMap/'
 const DESCRIPTION = '騎雙北河濱自行車道時，點 YouBike 站點找附近的便利商店、超市與自動販賣機，另標出躲雨點、廁所、淋浴與推薦環線。涵蓋臺北市與新北市。'
+const GA_ID = 'G-DJL0C5T7KM'
+
+// Google Analytics loads only in production builds, so dev and e2e runs send no hits.
+const analytics = process.env.NODE_ENV === 'production'
+  ? [
+      { src: `https://www.googletagmanager.com/gtag/js?id=${GA_ID}`, async: true },
+      { innerHTML: `window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','${GA_ID}');` },
+    ]
+  : []
 
 export default defineNuxtConfig({
   compatibilityDate: '2026-09-25',
@@ -41,7 +50,7 @@ export default defineNuxtConfig({
             { '@type': 'City', name: '新北市' },
           ],
         }),
-      }],
+      }, ...analytics],
     },
   },
   css: ['leaflet/dist/leaflet.css', 'leaflet.markercluster/dist/MarkerCluster.css'],
