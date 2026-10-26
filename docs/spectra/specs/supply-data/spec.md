@@ -222,7 +222,7 @@ The data pipeline SHALL publish `public/data/routes.json` from the OSM `route=bi
 
 The supplementary bridge list is kept in the repository. Each entry has an OSM `name`, a `highway` value, and a display `label`. For each entry the pipeline SHALL select the ways inside the two cities tagged with exactly that `name` and `highway` and with `bridge=yes`, join them with the same rule, and publish them as a route with `kind: "bridge"` and `name` set to the entry's `label`. These routes SHALL follow the relation routes in list order. The first entry SHALL be `name` `重陽橋`, `highway` `secondary`, `label` `重陽橋（人行道）`.
 
-The loop route list is kept in the repository. Each entry has the OSM relation `name` of a loop route, a display `label`, and optionally `optional: true`. For each entry the pipeline SHALL take the member ways of the `route=bicycle` relation with exactly that `name`, drop every way that is a member of a relation published as `kind: "riverside"` or `kind: "bridge"` or that is already in a link route published for an earlier entry of the list, join the remaining ways with the same rule, and publish them as a route with `kind: "link"` and `name` set to the entry's `label`; a route from an optional entry SHALL also have `optional: true`, and a route from any other entry SHALL have no `optional` field. Link routes SHALL follow the supplementary bridge routes in list order. The list SHALL hold exactly these entries in this order: `環騎臺北` → `環騎臺北（連接道路）`; `環騎臺北市區替代道路：深南路-南深路段` → `環騎臺北替代道路（深南路-南深路段）`; `環騎臺北市區替代道路：市民大道-莊敬隧道段` → `環騎臺北替代道路（市民大道-莊敬隧道段）`; `環騎臺北市區替代道路：研究院路-莊敬隧道段` → `環騎臺北替代道路（研究院路-莊敬隧道段）`; `北臺濱海環線 (西向)` → `北臺濱海環線（環島1-1）`. Every entry except `環騎臺北` SHALL be optional. No OSM way SHALL appear in more than one link route. A loop relation SHALL NOT be published as a riverside or bridge route because of its list entry, and link lines SHALL NOT be used for the riverside station classification.
+The loop route list is kept in the repository. Each entry has the OSM relation `name` of a loop route, a display `label`, and optionally `optional: true`. For each entry the pipeline SHALL take the member ways of the `route=bicycle` relation with exactly that `name`, drop every way that is a member of a relation published as `kind: "riverside"` or `kind: "bridge"` or that is already in a link route published for an earlier entry of the list, join the remaining ways with the same rule, and publish them as a route with `kind: "link"` and `name` set to the entry's `label`; a route from an optional entry SHALL also have `optional: true`, and a route from any other entry SHALL have no `optional` field. Link routes SHALL follow the supplementary bridge routes in list order. The list SHALL hold exactly these entries in this order: `環騎臺北` → `環騎臺北（連接道路）`; `環騎臺北市區替代道路：深南路-南深路段` → `環騎臺北替代道路（深南路-南深路段）`; `環騎臺北市區替代道路：市民大道-莊敬隧道段` → `環騎臺北替代道路（市民大道-莊敬隧道段）`; `環騎臺北市區替代道路：研究院路-莊敬隧道段` → `環騎臺北替代道路（研究院路-莊敬隧道段）`. Every entry except `環騎臺北` SHALL be optional. No OSM way SHALL appear in more than one link route. A loop relation SHALL NOT be published as a riverside or bridge route because of its list entry, and link lines SHALL NOT be used for the riverside station classification.
 
 `routes.json` SHALL also contain a `vending` array: every shop in the `vending` category whose distance to the nearest segment of any published route line without `optional` (riverside, bridge, or non-optional link) is at most 200 meters, as objects with `name` (string or `null`), `vending` (the OSM `vending` tag value or `null`), `lat`, and `lng`, sorted by shop id. Each optional link route SHALL have its own `vending` array in the same shape and order: every vending shop within 200 meters of that route's lines that is not in the top-level array. A shop within 200 meters of two optional routes SHALL appear in both of their arrays.
 
@@ -242,8 +242,8 @@ The pipeline SHALL exit with a non-zero status and SHALL NOT modify any file in 
 | `關渡大橋自行車牽引道` | `kind: "bridge"` |
 | `景美溪左岸大鵬華城堤外便道至鳴遠橋自行車道` | `kind: "riverside"` (riverside wins over 橋) |
 | `環騎臺北` | `kind: "link"`, `name: "環騎臺北（連接道路）"`, only its ways outside riverside and bridge relations |
-| `北臺濱海環線 (西向)` | `kind: "link"`, `name: "北臺濱海環線（環島1-1）"`, only its ways outside riverside, bridge and earlier link routes |
-| `北臺濱海環線 (東向)` | not published |
+| `環騎臺北市區替代道路：深南路-南深路段` | `kind: "link"`, `optional: true`, `name: "環騎臺北替代道路（深南路-南深路段）"`, only its ways outside riverside, bridge and earlier link routes |
+| `北臺濱海環線 (西向)` | not published (not in the loop route list) |
 | `復興南北路自行車道` | not published |
 
 #### Scenario: Too few bridge routes is rejected
@@ -313,16 +313,16 @@ The pipeline SHALL exit with a non-zero status and SHALL NOT modify any file in 
 
 #### Scenario: Optional loops carry their own vending machines
 
-- **WHEN** vending shops lie as below and `北臺濱海環線（環島1-1）` and `環騎臺北替代道路（市民大道-莊敬隧道段）` are optional link routes
+- **WHEN** vending shops lie as below and `環騎臺北替代道路（深南路-南深路段）` and `環騎臺北替代道路（市民大道-莊敬隧道段）` are optional link routes
 - **THEN** each shop is published as listed
 
 ##### Example: vending placement
 
 | Shop | Near (within 200 m) | Published in |
 | ---- | ------------------- | ------------ |
-| v1 | a riverside line and `北臺濱海環線（環島1-1）` | top-level `vending` only |
-| v2 | `北臺濱海環線（環島1-1）` only | that route's `vending` only |
-| v3 | `北臺濱海環線（環島1-1）` and `環騎臺北替代道路（市民大道-莊敬隧道段）` | both routes' `vending` |
+| v1 | a riverside line and `環騎臺北替代道路（深南路-南深路段）` | top-level `vending` only |
+| v2 | `環騎臺北替代道路（深南路-南深路段）` only | that route's `vending` only |
+| v3 | `環騎臺北替代道路（深南路-南深路段）` and `環騎臺北替代道路（市民大道-莊敬隧道段）` | both routes' `vending` |
 | v4 | no route line | nowhere |
 
 #### Scenario: Vending machines near routes
@@ -332,24 +332,20 @@ The pipeline SHALL exit with a non-zero status and SHALL NOT modify any file in 
 
 
 <!-- @trace
-source: make-loop-routes-selectable
+source: remove-coast-and-danlan-loops
 updated: 2026-10-24
 code:
-  - app/components/SupplyMap.client.vue
-  - scripts/lib/routes.js
-  - public/data/routes.json
-  - app/pages/index.vue
+  - scripts/lib/tour-routes.js
   - README.md
-  - app/utils/load-data.ts
-  - app/components/MapControls.vue
-  - public/data/meta.json
-  - scripts/fetch-data.js
+  - public/data/routes.json
   - scripts/lib/loop-routes.js
+  - CLAUDE.md
 tests:
-  - scripts/fetch-data.test.js
   - e2e/map.spec.ts
   - app/components/MapControls.test.ts
+  - scripts/lib/tour-routes.test.js
   - scripts/lib/routes.test.js
+  - scripts/fetch-data.test.js
 -->
 
 ---
@@ -529,7 +525,6 @@ tests:
 The tour route list is kept in the repository. Each entry has a 交通部自行車旅遊網 (taiwanbike.tw) tour `id` and the tour `name`. The list SHALL hold exactly these entries, in this order:
 
 - `A01` `北海岸漫遊`
-- `A02` `單車淡蘭極東2日遊`
 - `A03` `舊草嶺環線`
 - `A07` `淡水河金色水岸`
 
@@ -556,7 +551,7 @@ The tour route list is kept in the repository. Each entry has a 交通部自行�
 #### Scenario: Tours are published after the loop routes
 
 - **WHEN** every tour page serves a payload whose tour matches its entry
-- **THEN** the last four routes of `routes.json` are `北海岸漫遊`, `單車淡蘭極東2日遊`, `舊草嶺環線`, and `淡水河金色水岸`, each with `kind: "link"`, `optional: true`, and a `vending` array
+- **THEN** the last three routes of `routes.json` are `北海岸漫遊`, `舊草嶺環線`, and `淡水河金色水岸`, each with `kind: "link"`, `optional: true`, and a `vending` array
 
 #### Scenario: Track geometry becomes lines
 
@@ -582,30 +577,34 @@ The tour route list is kept in the repository. Each entry has a 交通部自行�
 
 #### Scenario: A page without a usable track is rejected
 
-- **WHEN** one tour page has no `__NUXT_DATA__` payload, another tour has a position at longitude 0, a third has only one-point lines, and a fourth page's payload holds only a different tour id
-- **THEN** the pipeline exits non-zero with one message per tour naming its `id` and the reason (`no __NUXT_DATA__ payload`, `invalid position`, `no line with 2 or more points`, `no tour with this id in the payload`), and no file in `public/data/` is modified
+- **WHEN** one tour page has no `__NUXT_DATA__` payload, another tour has a position at longitude 0, and the third has only one-point lines
+- **THEN** the pipeline exits non-zero with one message per tour naming its `id` and the reason (`no __NUXT_DATA__ payload`, `invalid position`, `no line with 2 or more points`), and no file in `public/data/` is modified
+
+#### Scenario: A page holding a different tour is rejected
+
+- **WHEN** the `A07` page's payload holds only the tour `A01`
+- **THEN** the pipeline exits non-zero with a message naming `A07` and `no tour with this id in the payload`, and no file in `public/data/` is modified
 
 #### Scenario: Tour lines do not mark stations riverside
 
 - **WHEN** a station lies 50 m from a tour line and more than 200 m from every riverside route line
 - **THEN** the station is published with `riverside: false`
 
+
 <!-- @trace
-source: add-taiwanbike-tour-routes
+source: remove-coast-and-danlan-loops
 updated: 2026-10-24
 code:
-  - scripts/fetch-data.js
-  - README.md
-  - public/data/meta.json
-  - public/data/cycling.json
   - scripts/lib/tour-routes.js
-  - CLAUDE.md
+  - README.md
   - public/data/routes.json
-  - app/pages/index.vue
-  - scripts/lib/tour-page.fixture.js
+  - scripts/lib/loop-routes.js
+  - CLAUDE.md
 tests:
   - e2e/map.spec.ts
+  - app/components/MapControls.test.ts
   - scripts/lib/tour-routes.test.js
+  - scripts/lib/routes.test.js
   - scripts/fetch-data.test.js
 -->
 
@@ -652,7 +651,7 @@ Routes without `optional` SHALL have no `stops` field.
 
 #### Scenario: Loop stops depend on the line count
 
-- **WHEN** the optional loop `環騎臺北替代道路（深南路-南深路段）` has one line, `北臺濱海環線（環島1-1）` has ten lines, and `環騎臺北（連接道路）` is not optional
+- **WHEN** the optional loop `環騎臺北替代道路（深南路-南深路段）` has one line, a second optional loop has ten lines, and `環騎臺北（連接道路）` is not optional
 - **THEN** the first has two `tip` stops at its line's ends, the second has `stops: []`, and the third has no `stops` field
 
 #### Scenario: A tour with an unreadable segment name is rejected
@@ -666,8 +665,18 @@ Routes without `optional` SHALL have no `stops` field.
 - **THEN** the pipeline exits non-zero with a message naming `A01`, and no file in `public/data/` is modified
 
 <!-- @trace
-source: highlight-shown-loops
+source: remove-coast-and-danlan-loops
 updated: 2026-10-24
 code:
+  - scripts/lib/tour-routes.js
+  - README.md
+  - public/data/routes.json
+  - scripts/lib/loop-routes.js
   - CLAUDE.md
+tests:
+  - e2e/map.spec.ts
+  - app/components/MapControls.test.ts
+  - scripts/lib/tour-routes.test.js
+  - scripts/lib/routes.test.js
+  - scripts/fetch-data.test.js
 -->

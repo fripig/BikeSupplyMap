@@ -219,12 +219,12 @@ When route data is loading or failed to load, or has no optional route, the `環
 #### Scenario: Loops are off at first
 
 - **WHEN** the user opens the site with the 2026-10-24 routes.json
-- **THEN** the `環線` group lists `環騎臺北替代道路（深南路-南深路段）`, `環騎臺北替代道路（市民大道-莊敬隧道段）`, `環騎臺北替代道路（研究院路-莊敬隧道段）`, `北臺濱海環線（環島1-1）`, `北海岸漫遊`, `單車淡蘭極東2日遊`, `舊草嶺環線`, and `淡水河金色水岸`, every switch is off, and clicking a point on the `北臺濱海環線（環島1-1）` line opens no popup
+- **THEN** the `環線` group lists `環騎臺北替代道路（深南路-南深路段）`, `環騎臺北替代道路（市民大道-莊敬隧道段）`, `環騎臺北替代道路（研究院路-莊敬隧道段）`, `北海岸漫遊`, `舊草嶺環線`, and `淡水河金色水岸`, every switch is off, and clicking a point on the `環騎臺北替代道路（市民大道-莊敬隧道段）` line opens no popup
 
 #### Scenario: Turning a loop on and off
 
-- **WHEN** the user turns the `北臺濱海環線（環島1-1）` switch on, clicks its line, then turns the switch off
-- **THEN** after turning it on the map view contains the whole route and its vending icon is shown, clicking the line shows `北臺濱海環線（環島1-1）`, and after turning it off the line and its vending icon are gone and the map view is unchanged
+- **WHEN** the user turns the `環騎臺北替代道路（市民大道-莊敬隧道段）` switch on, clicks its line, then turns the switch off
+- **THEN** after turning it on the map view contains the whole route and its vending icons are shown, clicking the line shows `環騎臺北替代道路（市民大道-莊敬隧道段）`, and after turning it off the line and its vending icons are gone and the map view is unchanged
 
 #### Scenario: A shown loop is highlighted above other lines
 
@@ -243,10 +243,20 @@ When route data is loading or failed to load, or has no optional route, the `環
 
 
 <!-- @trace
-source: highlight-shown-loops
+source: remove-coast-and-danlan-loops
 updated: 2026-10-24
 code:
+  - scripts/lib/tour-routes.js
+  - README.md
+  - public/data/routes.json
+  - scripts/lib/loop-routes.js
   - CLAUDE.md
+tests:
+  - e2e/map.spec.ts
+  - app/components/MapControls.test.ts
+  - scripts/lib/tour-routes.test.js
+  - scripts/lib/routes.test.js
+  - scripts/fetch-data.test.js
 -->
 
 ---
@@ -267,9 +277,7 @@ Whenever the page is shown, its credits footer SHALL contain the text `推薦遊
   - `環騎臺北替代道路（深南路-南深路段）`
   - `環騎臺北替代道路（市民大道-莊敬隧道段）`
   - `環騎臺北替代道路（研究院路-莊敬隧道段）`
-  - `北臺濱海環線（環島1-1）`
   - `北海岸漫遊`
-  - `單車淡蘭極東2日遊`
   - `舊草嶺環線`
   - `淡水河金色水岸`
 - **AND** every switch is off
@@ -284,22 +292,21 @@ Whenever the page is shown, its credits footer SHALL contain the text `推薦遊
 - **WHEN** the page has loaded
 - **THEN** the credits footer contains `推薦遊程路線來源：交通部自行車旅遊網`, with a link to `https://taiwanbike.tw/bikeRoute/tour`
 
+
 <!-- @trace
-source: add-taiwanbike-tour-routes
+source: remove-coast-and-danlan-loops
 updated: 2026-10-24
 code:
-  - scripts/fetch-data.js
-  - README.md
-  - public/data/meta.json
-  - public/data/cycling.json
   - scripts/lib/tour-routes.js
-  - CLAUDE.md
+  - README.md
   - public/data/routes.json
-  - app/pages/index.vue
-  - scripts/lib/tour-page.fixture.js
+  - scripts/lib/loop-routes.js
+  - CLAUDE.md
 tests:
   - e2e/map.spec.ts
+  - app/components/MapControls.test.ts
   - scripts/lib/tour-routes.test.js
+  - scripts/lib/routes.test.js
   - scripts/fetch-data.test.js
 -->
 
