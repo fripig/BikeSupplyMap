@@ -269,21 +269,21 @@ describe('fetch-data', () => {
   it('writes riverside, bridge and link routes and reports the bridge count', async () => {
     const { code, stdout } = await run()
     expect(code).toBe(0)
-    expect(stdout).toContain('routes: 21 riverside, 19 bridge, 1 supplementary bridge, 5 link')
+    expect(stdout).toContain('routes: 21 riverside, 19 bridge, 1 supplementary bridge, 4 link')
     const data = await readData()
     const { routes } = JSON.parse(data['routes.json'])
-    expect(routes).toHaveLength(50)
+    expect(routes).toHaveLength(48)
     expect(routes[40]).toEqual({ kind: 'bridge', name: '重陽橋（人行道）', lines: [[[25.06, 121.49], [25.06, 121.491], [25.061, 121.492]]] })
     // The loop's riverside way 1 is left out; only its own way 5 remains.
     expect(routes[41]).toEqual({ kind: 'link', name: '環騎臺北（連接道路）', lines: [[[24.8, 121.3], [24.801, 121.3]]] })
-    expect(routes.slice(41, 46).map((r) => r.name)).toEqual(LOOP_ROUTES.map((l) => l.label))
+    expect(routes.slice(41, 45).map((r) => r.name)).toEqual(LOOP_ROUTES.map((l) => l.label))
     expect(routes.slice(42).every((r) => r.optional === true && Array.isArray(r.vending))).toBe(true)
-    expect(routes[45]).toEqual({
-      kind: 'link', name: '北臺濱海環線（環島1-1）', optional: true, lines: [[[24.84, 121.3], [24.841, 121.3]]],
-      stops: [{ kind: 'tip', name: null, lat: 24.84, lng: 121.3 }, { kind: 'tip', name: null, lat: 24.841, lng: 121.3 }],
+    expect(routes[44]).toEqual({
+      kind: 'link', name: '環騎臺北替代道路（研究院路-莊敬隧道段）', optional: true, lines: [[[24.83, 121.3], [24.831, 121.3]]],
+      stops: [{ kind: 'tip', name: null, lat: 24.83, lng: 121.3 }, { kind: 'tip', name: null, lat: 24.831, lng: 121.3 }],
       vending: [],
     })
-    expect(data['routes.json'].split('\n')[46]).toBe(JSON.stringify(routes[45]) + ',')
+    expect(data['routes.json'].split('\n')[45]).toBe(JSON.stringify(routes[44]) + ',')
     expect(routes[0]).toEqual({ kind: 'riverside', name: '測試河0自行車道', lines: [[[25.03, 121.53], [25.03, 121.6]]] })
     expect(routes[21]).toEqual({ kind: 'bridge', name: '測試0橋自行車道', lines: [[[24.9, 121.4], [24.901, 121.4]]] })
     expect(data['routes.json'].split('\n')[1]).toBe(JSON.stringify(routes[0]) + ',')
@@ -296,19 +296,19 @@ describe('fetch-data', () => {
     expect(stdout).toContain(`tours: ${TOUR_ROUTES.map((t) => t.name).join(', ')}`)
     const data = await readData()
     const { routes, vending } = JSON.parse(data['routes.json'])
-    expect(routes.slice(46).map((r) => r.name)).toEqual(TOUR_ROUTES.map((t) => t.name))
-    expect(routes[46]).toEqual({
+    expect(routes.slice(45).map((r) => r.name)).toEqual(TOUR_ROUTES.map((t) => t.name))
+    expect(routes[45]).toEqual({
       kind: 'link', name: '北海岸漫遊', optional: true, lines: [[[24.7, 121.9], [24.7, 121.901]]],
       stops: [{ kind: 'start', name: '起點站', lat: 24.7, lng: 121.9 }, { kind: 'end', name: '終點站', lat: 24.7, lng: 121.901 }],
       vending: [],
     })
     // A07 runs through the 20 far vending machines, which are not top-level.
-    expect(routes[49]).toEqual({
+    expect(routes[47]).toEqual({
       kind: 'link', name: '淡水河金色水岸', optional: true, lines: [[[24.5, 121.53], [24.5, 121.55]]],
       stops: [{ kind: 'start', name: '起點站', lat: 24.5, lng: 121.53 }, { kind: 'end', name: '終點站', lat: 24.5, lng: 121.55 }],
       vending: Array.from({ length: 20 }, () => ({ name: null, vending: 'drinks', lat: 24.5, lng: 121.54 })),
     })
-    expect(data['routes.json'].split('\n')[50]).toBe(JSON.stringify(routes[49]))
+    expect(data['routes.json'].split('\n')[48]).toBe(JSON.stringify(routes[47]))
     expect(vending).toHaveLength(100)
     expect(JSON.parse(data['meta.json']).counts.routeVending).toBe(100)
   })
@@ -363,14 +363,20 @@ describe('fetch-data', () => {
 
   it('rejects tour pages without a usable track and names every one', async () => {
     responses['/taiwanbike/bikeRoute/tour/A01'] = () => [200, '<html><body>維護中</body></html>']
-    responses['/taiwanbike/bikeRoute/tour/A02'] = () => [200, tourPage(tourRecord('A02', '單車淡蘭極東2日遊', [lineString([[0, 25], [121.6, 25.1]])]))]
     responses['/taiwanbike/bikeRoute/tour/A03'] = () => [200, tourPage(tourRecord('A03', '舊草嶺環線', [lineString([[121.9, 25], [121.9, 25]])]))]
-    responses['/taiwanbike/bikeRoute/tour/A07'] = () => [200, tourPage(tourRecord('A01', '北海岸漫遊', []))]
+    responses['/taiwanbike/bikeRoute/tour/A07'] = () => [200, tourPage(tourRecord('A07', '淡水河金色水岸', [lineString([[0, 25], [121.6, 25.1]])]))]
     const { code, stderr } = await run()
     expect(code).not.toBe(0)
     expect(stderr).toContain('tour route A01 北海岸漫遊: no __NUXT_DATA__ payload')
-    expect(stderr).toContain('tour route A02 單車淡蘭極東2日遊: invalid position')
     expect(stderr).toContain('tour route A03 舊草嶺環線: no line with 2 or more points')
+    expect(stderr).toContain('tour route A07 淡水河金色水岸: invalid position')
+    expect(await readData()).toEqual(SEED)
+  })
+
+  it('rejects a tour page that holds a different tour', async () => {
+    responses['/taiwanbike/bikeRoute/tour/A07'] = () => [200, tourPage(tourRecord('A01', '北海岸漫遊', []))]
+    const { code, stderr } = await run()
+    expect(code).not.toBe(0)
     expect(stderr).toContain('tour route A07 淡水河金色水岸: no tour with this id in the payload')
     expect(await readData()).toEqual(SEED)
   })

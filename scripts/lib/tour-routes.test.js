@@ -3,10 +3,9 @@ import { TOUR_ROUTES, tourFromPage, tourLines, tourStops } from './tour-routes.j
 import { lineString, multiLineString, segment, tourPage, tourRecord } from './tour-page.fixture.js'
 
 describe('TOUR_ROUTES', () => {
-  it('lists the four 雙北 tours in site id order', () => {
+  it('lists the three 雙北 tours in site id order', () => {
     expect(TOUR_ROUTES).toEqual([
       { id: 'A01', name: '北海岸漫遊' },
-      { id: 'A02', name: '單車淡蘭極東2日遊' },
       { id: 'A03', name: '舊草嶺環線' },
       { id: 'A07', name: '淡水河金色水岸' },
     ])

@@ -6,7 +6,6 @@
 // the page footer gives.
 export const TOUR_ROUTES = [
   { id: 'A01', name: '北海岸漫遊' },
-  { id: 'A02', name: '單車淡蘭極東2日遊' },
   { id: 'A03', name: '舊草嶺環線' },
   { id: 'A07', name: '淡水河金色水岸' },
 ]

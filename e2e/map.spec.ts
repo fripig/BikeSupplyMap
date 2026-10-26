@@ -94,7 +94,7 @@ test('the 環騎臺北 link line shows its name and is in the legend', async ({ 
   await expect(page.locator('.leaflet-popup-content')).toHaveText(name)
 })
 
-const COAST = '北臺濱海環線（環島1-1）'
+const CIVIC = '環騎臺北替代道路（市民大道-莊敬隧道段）'
 const loopGroup = (page: Page) => page.locator('fieldset', { has: page.locator('legend', { hasText: /^環線$/ }) })
 const loopSwitch = (page: Page, name: string) => loopGroup(page).locator('label.switch', { hasText: name })
 const popup = (page: Page) => page.locator('.leaflet-popup-content')
@@ -106,7 +106,7 @@ async function optionalRoute(page: Page, name: string) {
   const line = route.lines.reduce((a, b) => (b.length > a.length ? b : a))
   return { route, at: line[Math.floor(line.length / 2)]! }
 }
-const coastRoute = (page: Page) => optionalRoute(page, COAST)
+const civicRoute = (page: Page) => optionalRoute(page, CIVIC)
 
 async function clickAt(page: Page, at: LatLng) {
   await setView(page, at, 17)
@@ -123,31 +123,29 @@ test('optional loops are listed in 環線, all off, and not drawn on load', asyn
   const optional = (await loadRoutes(page)).routes.filter((r) => r.optional).map((r) => r.name)
   expect(optional).toEqual([
     '環騎臺北替代道路（深南路-南深路段）',
-    '環騎臺北替代道路（市民大道-莊敬隧道段）',
+    CIVIC,
     '環騎臺北替代道路（研究院路-莊敬隧道段）',
-    COAST,
     '北海岸漫遊',
-    '單車淡蘭極東2日遊',
     '舊草嶺環線',
     '淡水河金色水岸',
   ])
   const switches = loopGroup(page).getByRole('switch')
   await expect(loopGroup(page).locator('label.switch')).toHaveText(optional)
   for (const s of await switches.all()) await expect(s).not.toBeChecked()
-  const { route, at } = await coastRoute(page)
+  const { route, at } = await civicRoute(page)
   await clickAt(page, at)
   await expect(popup(page)).toHaveCount(0)
   const v = route.vending?.[0]
-  if (!v) throw new Error(`${COAST} has no vending machine of its own`)
+  if (!v) throw new Error(`${CIVIC} has no vending machine of its own`)
   await setView(page, [v.lat, v.lng], 17)
   expect(await vendingDrawnAt(page, [v.lat, v.lng])).toBe(false)
 })
 
-test('turning the 北臺濱海環線 switch on frames and draws it, and off removes it without moving the map', async ({ page }) => {
-  const { route, at } = await coastRoute(page)
+test('turning the 市民大道-莊敬隧道段 switch on frames and draws it, and off removes it without moving the map', async ({ page }) => {
+  const { route, at } = await civicRoute(page)
   const points = route.lines.flat()
-  await loopSwitch(page, COAST).click()
-  await expect(loopGroup(page).getByRole('switch', { name: COAST })).toBeChecked()
+  await loopSwitch(page, CIVIC).click()
+  await expect(loopGroup(page).getByRole('switch', { name: CIVIC })).toBeChecked()
   await settleMap(page)
   const framed = await page.evaluate((pts) => {
     const bounds = window.__supplyMap!.getBounds()
@@ -156,17 +154,17 @@ test('turning the 北臺濱海環線 switch on frames and draws it, and off remo
   expect(framed).toBe(true)
 
   const v = route.vending?.[0]
-  if (!v) throw new Error(`${COAST} has no vending machine of its own`)
+  if (!v) throw new Error(`${CIVIC} has no vending machine of its own`)
   await setView(page, [v.lat, v.lng], 17)
   expect(await vendingDrawnAt(page, [v.lat, v.lng])).toBe(true)
 
   await clickAt(page, at)
-  await expect(popup(page)).toHaveText(COAST)
+  await expect(popup(page)).toHaveText(CIVIC)
   await page.keyboard.press('Escape')
 
   const before = await mapView(page)
-  await loopSwitch(page, COAST).click()
-  await expect(loopGroup(page).getByRole('switch', { name: COAST })).not.toBeChecked()
+  await loopSwitch(page, CIVIC).click()
+  await expect(loopGroup(page).getByRole('switch', { name: CIVIC })).not.toBeChecked()
   await settleMap(page)
   expect(await mapView(page)).toEqual(before)
   await setView(page, [v.lat, v.lng], 17)
@@ -176,10 +174,10 @@ test('turning the 北臺濱海環線 switch on frames and draws it, and off remo
 })
 
 test('a loop\'s vending icons follow the 自動販賣機 toggle while the loop stays drawn', async ({ page }) => {
-  const { route, at } = await coastRoute(page)
+  const { route, at } = await civicRoute(page)
   const v = route.vending?.[0]
-  if (!v) throw new Error(`${COAST} has no vending machine of its own`)
-  await loopSwitch(page, COAST).click()
+  if (!v) throw new Error(`${CIVIC} has no vending machine of its own`)
+  await loopSwitch(page, CIVIC).click()
   await setView(page, [v.lat, v.lng], 17)
   expect(await vendingDrawnAt(page, [v.lat, v.lng])).toBe(true)
   await vendingChip(page).click()
@@ -187,7 +185,7 @@ test('a loop\'s vending icons follow the 自動販賣機 toggle while the loop s
   await vendingChip(page).click()
   expect(await vendingDrawnAt(page, [v.lat, v.lng])).toBe(true)
   await clickAt(page, at)
-  await expect(popup(page)).toHaveText(COAST)
+  await expect(popup(page)).toHaveText(CIVIC)
 })
 
 test('turning the 淡水河金色水岸 tour on frames it and its line shows the name', async ({ page }) => {
@@ -550,3 +548,4 @@ test('station markers and clusters of both kinds share one style', async ({ page
   expect(selected.background).toBe('rgb(230, 119, 0)')
   expect(riverside.background).toBe('rgb(245, 166, 35)')
 })
+

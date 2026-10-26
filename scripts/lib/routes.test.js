@@ -129,13 +129,12 @@ describe('buildRoutes loop routes', () => {
   const ENTRY = { name: '環騎臺北', label: '環騎臺北（連接道路）' }
   const ALT = { name: '環騎臺北市區替代道路：深南路-南深路段', label: '環騎臺北替代道路（深南路-南深路段）' }
 
-  it('lists 環騎臺北 first, then its optional alternative sections and the 北臺濱海環線', () => {
+  it('lists 環騎臺北 first, then its optional alternative sections', () => {
     expect(LOOP_ROUTES).toEqual([
       ENTRY,
       { name: '環騎臺北市區替代道路：深南路-南深路段', label: '環騎臺北替代道路（深南路-南深路段）', optional: true },
       { name: '環騎臺北市區替代道路：市民大道-莊敬隧道段', label: '環騎臺北替代道路（市民大道-莊敬隧道段）', optional: true },
       { name: '環騎臺北市區替代道路：研究院路-莊敬隧道段', label: '環騎臺北替代道路（研究院路-莊敬隧道段）', optional: true },
-      { name: '北臺濱海環線 (西向)', label: '北臺濱海環線（環島1-1）', optional: true },
     ])
   })
 
@@ -234,19 +233,6 @@ describe('buildRoutes loop routes', () => {
     expect(missingLoops).toEqual(['環騎臺北市區替代道路：研究院路-莊敬隧道段'])
   })
 
-  it('publishes 北臺濱海環線 (西向) as a link route and leaves 東向 out', () => {
-    const elements = [
-      ...LOOP_ROUTES.map((loop, i) => rel(10 + i, loop.name, [300 + i])),
-      ...LOOP_ROUTES.map((_, i) => way(300 + i, 25.1 + i * 0.01)),
-      rel(20, '北臺濱海環線 (東向)', [399]), way(399, 25.2),
-    ]
-    const { routes, missingLoops } = buildRoutes({ elements }, [], LOOP_ROUTES)
-    expect(missingLoops).toEqual([])
-    expect(routes.find((r) => r.name === '北臺濱海環線（環島1-1）')?.kind).toBe('link')
-    expect(routes.some((r) => r.name.startsWith('北臺濱海環線 (東向)'))).toBe(false)
-    expect(routes.flatMap((r) => r.lines).some((l) => l[0][0] === 25.2)).toBe(false)
-  })
-
   it('reports no missing loops when no loop list is given', () => {
     expect(buildRoutes({ elements: [] }).missingLoops).toEqual([])
   })
@@ -285,28 +271,28 @@ describe('routeVending', () => {
 })
 
 describe('splitRouteVending', () => {
-  // Lines run east–west; 0.001° of latitude is about 111 m. 北臺濱海環線 has a
+  // Lines run east–west; 0.001° of latitude is about 111 m. The 深南路 loop has a
   // piece 111 m from the riverside line and a piece next to 市民大道.
   const riverside = { kind: 'riverside', name: '淡水河左岸自行車道', lines: [[[25.0, 121.5], [25.0, 121.53]]] }
-  const coast = { kind: 'link', name: '北臺濱海環線（環島1-1）', optional: true, lines: [[[25.001, 121.52], [25.001, 121.53]], [[25.02, 121.5], [25.02, 121.51]]] }
+  const shennan = { kind: 'link', name: '環騎臺北替代道路（深南路-南深路段）', optional: true, lines: [[[25.001, 121.52], [25.001, 121.53]], [[25.02, 121.5], [25.02, 121.51]]] }
   const civic = { kind: 'link', name: '環騎臺北替代道路（市民大道-莊敬隧道段）', optional: true, lines: [[[25.023, 121.5], [25.023, 121.51]]] }
   const shop = (id, lat, lng) => ({ id, name: id, category: 'vending', lat, lng, vending: 'drinks' })
-  const v1 = shop('v1', 25.0005, 121.525) // near the riverside line and 北臺濱海環線
-  const v2 = shop('v2', 25.0185, 121.505) // 167 m from 北臺濱海環線, 500 m from 市民大道
+  const v1 = shop('v1', 25.0005, 121.525) // near the riverside line and the 深南路 loop
+  const v2 = shop('v2', 25.0185, 121.505) // 167 m from the 深南路 loop, 500 m from 市民大道
   const v3 = shop('v3', 25.0215, 121.505) // 167 m from both optional loops
   const v4 = shop('v4', 25.1, 121.505) // near no line
   const out = (s) => ({ name: s.name, vending: 'drinks', lat: s.lat, lng: s.lng })
 
   it('lists vending near always-drawn routes at the top level and the rest on each optional loop', () => {
-    const { vending, routes } = splitRouteVending([riverside, coast, civic], [v4, v3, v2, v1])
+    const { vending, routes } = splitRouteVending([riverside, shennan, civic], [v4, v3, v2, v1])
     expect(vending).toEqual([out(v1)])
     expect(routes[0]).toEqual(riverside)
-    expect(routes[1]).toEqual({ ...coast, vending: [out(v2), out(v3)] })
+    expect(routes[1]).toEqual({ ...shennan, vending: [out(v2), out(v3)] })
     expect(routes[2]).toEqual({ ...civic, vending: [out(v3)] })
   })
 
   it('gives an optional loop an empty array when no machine is its own', () => {
-    const { routes } = splitRouteVending([riverside, coast], [v1])
+    const { routes } = splitRouteVending([riverside, shennan], [v1])
     expect(routes[1].vending).toEqual([])
   })
 })

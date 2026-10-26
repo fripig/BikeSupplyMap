@@ -99,7 +99,7 @@ describe.each([
 })
 
 describe('MapControls loop switches', () => {
-  const LOOPS = ['環騎臺北替代道路（深南路-南深路段）', '北臺濱海環線（環島1-1）']
+  const LOOPS = ['環騎臺北替代道路（深南路-南深路段）', '淡水河金色水岸']
   const group = (wrapper: ReturnType<typeof mountControls>) =>
     wrapper.findAll('fieldset').find((f) => f.find('legend').text() === '環線')
 
