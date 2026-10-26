@@ -256,6 +256,26 @@ test('the footer credits 交通部自行車旅遊網 for the tour routes', async
   await expect(credits.getByRole('link', { name: '交通部自行車旅遊網' })).toHaveAttribute('href', 'https://taiwanbike.tw/bikeRoute/tour')
 })
 
+test('the head carries a canonical link, one description and WebApplication JSON-LD', async ({ page }) => {
+  const siteUrl = 'https://fripig.github.io/BikeSupplyMap/'
+  await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', siteUrl)
+  const description = await page.locator('meta[name="description"]').getAttribute('content')
+  expect(description).toBeTruthy()
+  await expect(page.locator('meta[property="og:description"]')).toHaveAttribute('content', description!)
+  const jsonLd = JSON.parse(await page.locator('script[type="application/ld+json"]').textContent() ?? '')
+  expect(jsonLd).toMatchObject({
+    '@type': 'WebApplication',
+    name: '雙北 YouBike 補給地圖',
+    url: siteUrl,
+    description,
+    inLanguage: 'zh-Hant-TW',
+    applicationCategory: 'TravelApplication',
+    operatingSystem: 'Any',
+    isAccessibleForFree: true,
+    areaServed: [{ '@type': 'City', name: '臺北市' }, { '@type': 'City', name: '新北市' }],
+  })
+})
+
 test('no 環線 group is shown when routes.json fails to load', async ({ page }) => {
   await page.route('**/data/routes.json', (route) => route.fulfill({ status: 404, body: 'not found' }))
   await page.reload()
