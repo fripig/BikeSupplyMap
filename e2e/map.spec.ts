@@ -697,3 +697,40 @@ test('a picked point with no station within 2 km says so', async ({ page }) => {
   await expect(page.locator('.point-station')).toHaveText('2 km 內沒有 YouBike 站')
   await expect(page.getByRole('button', { name: '選這個站' })).toHaveCount(0)
 })
+
+test('selections and Google Maps links send analytics events', async ({ page }) => {
+  // The dev server loads no Google Analytics, so a stub gtag records the events.
+  // Google Maps links are kept from opening a tab; window's capture listener
+  // runs before the site's, which still sees the click.
+  await page.addInitScript(() => {
+    const w = window as unknown as { events: unknown[][], gtag: (...args: unknown[]) => void }
+    w.events = []
+    w.gtag = (...args) => { w.events.push(args) }
+    window.addEventListener('click', (e) => {
+      if ((e.target as Element).closest?.('a[href^="https://www.google.com/maps/"]')) e.preventDefault()
+    }, true)
+  })
+  await openMap(page)
+  const events = () => page.evaluate(() =>
+    (window as unknown as { events: unknown[][] }).events.filter(([kind]) => kind === 'event').map(([, name, params]) => [name, params]))
+
+  const stations = await loadStations(page)
+  const point = await clickBlankSpot(page, TAIPEI_MAIN)
+  await expect.poll(events).toEqual([['pick_map_point', { has_station: true }]])
+
+  const nearest = stations.reduce((a, b) => (haversineMeters(point, b) < haversineMeters(point, a) ? b : a))
+  await page.getByRole('button', { name: '選這個站' }).click()
+  await expect.poll(events).toContainEqual(['select_station', {
+    station_name: nearest.name, station_kind: nearest.riverside ? 'riverside' : 'urban', via: 'map_point',
+  }])
+
+  await page.locator('.station-link').click()
+  await expect.poll(events).toContainEqual(['open_map_place', { place: 'station' }])
+
+  const shop = page.locator('.shop__link').first()
+  const category = await shop.getAttribute('data-ga-category')
+  const distance = Number(await shop.getAttribute('data-ga-distance-m'))
+  expect(category).toBeTruthy()
+  await shop.click()
+  await expect.poll(events).toContainEqual(['open_directions', { from: 'list', category, distance_m: distance }])
+})

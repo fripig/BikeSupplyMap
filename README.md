@@ -92,6 +92,13 @@ npm run preview      # 預覽產生的靜態網站：http://localhost:3001/BikeS
 - [Nuxt 4](https://nuxt.com/)（Vue 3），以 `nuxt generate` 產生靜態網站，部署在 GitHub Pages。
 - [Leaflet](https://leafletjs.com/) + `leaflet.markercluster`，地圖元件只在瀏覽器端執行。
 - 站點與店家資料在建置前預先抓好，存成 `public/data/*.json`，網站執行時不呼叫任何 API。
+- 正式網站載入 Google Analytics（`G-DJL0C5T7KM`），開發伺服器與測試不載入。除了頁面瀏覽，另外送出這些事件（`app/utils/analytics.ts`）：
+  - `select_station`：選站點，帶 `station_name`、`station_kind`（`riverside`／`urban`）與 `via`（`marker` 點站點圖示、`map_point` 選點後按「選這個站」、`route_stop` 環線標記裡按「選這個站」）。
+  - `pick_map_point`：點地圖空白處選點，帶 `has_station`（2 km 內有沒有站）。
+  - `open_directions`：點「步行導航」，帶 `from`（`list` 側欄清單／`popup` 地圖上的店家說明框）、`category`（店家類型）與 `distance_m`（直線距離，公尺）。
+  - `open_map_place`：點「在 Google 地圖開啟」，帶 `place`（`station`、`map_point`、`vending`、`shelter`、`toilet`、`shower`、`route_stop`）。
+  - `toggle_layer`：切換圖層開關，帶 `layer`（`riverside_stations`、`urban_stations`、`urban_cycling`、`shelters`、`toilets`、`showers`）與 `enabled`。
+  - `toggle_loop`：切換環線開關，帶 `loop_name` 與 `enabled`。
 - 之後若需要伺服器端渲染（SSR），可以把 `nuxt.config.ts` 的 Nitro preset 從 `github_pages` 改成 Cloudflare 等支援伺服器執行的平台。
 
 ## 資料來源與授權

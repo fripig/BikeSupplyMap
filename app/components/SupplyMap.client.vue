@@ -28,7 +28,8 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  select: [pick: Station | MapPoint]
+  // `via` says what was clicked: a station marker, a blank spot, or a route stop's 選這個站.
+  select: [pick: Station | MapPoint, via: 'marker' | 'map' | 'route_stop']
 }>()
 
 const container = ref<HTMLElement>()
@@ -72,11 +73,12 @@ const FALLBACK_VIEW = { center: [25.0375, 121.5637] as [number, number], zoom: 1
 const escapeHtml = (s: string) =>
   s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!)
 
-// A link showing a place in Google Maps, ending every place and stop popup.
-const mapsLink = (place: { lat: number, lng: number }) =>
-  `<a href="${mapsPlaceUrl(place)}" target="_blank" rel="noopener">在 Google 地圖開啟</a>`
+// A link showing a place in Google Maps, ending every place and stop popup;
+// `kind` is the analytics place type sent when it is followed.
+const mapsLink = (place: { lat: number, lng: number }, kind: string) =>
+  `<a href="${mapsPlaceUrl(place)}" target="_blank" rel="noopener" data-ga-place="${kind}">在 Google 地圖開啟</a>`
 // Popup for a place icon: its text, then the Google Maps link.
-const placePopup = (label: string, place: { lat: number, lng: number }) => `${escapeHtml(label)}<br>${mapsLink(place)}`
+const placePopup = (label: string, place: { lat: number, lng: number }, kind: string) => `${escapeHtml(label)}<br>${mapsLink(place, kind)}`
 
 onMounted(async () => {
   L = (await import('leaflet')).default
@@ -124,7 +126,7 @@ onMounted(async () => {
   const addMarkers = (stations: Station[], icon: typeof riversideIcon, layer: MarkerClusterGroup) => {
     for (const station of stations) {
       L.marker([station.lat, station.lng], { icon, title: station.name })
-        .on('click', () => emit('select', station))
+        .on('click', () => emit('select', station, 'marker'))
         .addTo(layer)
     }
   }
@@ -177,7 +179,7 @@ function pickPointsOnBlankClicks(m: LeafletMap) {
     const pick: MapPoint = { kind: 'point', lat: round5(e.latlng.lat), lng: round5(e.latlng.lng) }
     pending = setTimeout(() => {
       pending = undefined
-      emit('select', pick)
+      emit('select', pick, 'map')
     }, PICK_DELAY_MS)
   })
 }
@@ -211,7 +213,8 @@ function drawSelection() {
     })
       .bindPopup(
         `<strong>${escapeHtml(label)}</strong><br>${CATEGORY_LABELS[shop.category]} · 直線距離 ${formatDistance(distance)}`
-        + `<br><a href="${directionsUrl(station, shop)}" target="_blank" rel="noopener">Google 地圖步行導航</a>`,
+        + `<br><a href="${directionsUrl(station, shop)}" target="_blank" rel="noopener"`
+        + ` data-ga-from="popup" data-ga-category="${shop.category}" data-ga-distance-m="${Math.round(distance)}">Google 地圖步行導航</a>`,
       )
       .addTo(shopLayer)
   }
@@ -248,7 +251,7 @@ function vendingMarkers(items: RouteVending[]) {
     L.circleMarker([v.lat, v.lng], {
       renderer: renderer(), radius: 5, weight: 2, color: '#fff', fillColor: CATEGORY_COLORS.vending, fillOpacity: 1, bubblingMouseEvents: false,
     })
-      .bindPopup(placePopup(vendingLabel(v.name, v.vending), v))
+      .bindPopup(placePopup(vendingLabel(v.name, v.vending), v, 'vending'))
       .addTo(layer)
   }
   return layer
@@ -289,13 +292,13 @@ function stopPopup(label: string, at: { lat: number, lng: number }) {
     button.textContent = '選這個站'
     button.addEventListener('click', () => {
       map?.closePopup()
-      emit('select', nearest.station)
+      emit('select', nearest.station, 'route_stop')
     })
     el.append(' ', button)
   } else {
     el.append('2 km 內沒有 YouBike 站')
   }
-  el.insertAdjacentHTML('beforeend', `<br>${mapsLink(at)}`)
+  el.insertAdjacentHTML('beforeend', `<br>${mapsLink(at, 'route_stop')}`)
   return el
 }
 
@@ -404,7 +407,7 @@ function updateShelterLayer() {
         className: 'shelter-icon', iconSize: [18, 18], html: s.kind === 'bridge' ? '橋' : '亭',
       })
       L.marker([s.lat, s.lng], { icon, zIndexOffset: -1000, title: shelterLabel(s.kind, s.name) })
-        .bindPopup(placePopup(shelterLabel(s.kind, s.name), s))
+        .bindPopup(placePopup(shelterLabel(s.kind, s.name), s, 'shelter'))
         .addTo(shelterLayer)
     }
   }
@@ -417,12 +420,12 @@ function updateShelterLayer() {
 
 // A layer of square glyph icons below the station markers, each titled and
 // opening a popup with its label and Google Maps link.
-function glyphLayer<T extends { lat: number, lng: number }>(items: T[], className: string, glyph: string, label: (item: T) => string) {
+function glyphLayer<T extends { lat: number, lng: number }>(items: T[], kind: string, glyph: string, label: (item: T) => string) {
   const layer = L.layerGroup()
-  const icon = L.divIcon({ className, iconSize: [18, 18], html: glyph })
+  const icon = L.divIcon({ className: `facility-icon facility-icon--${kind}`, iconSize: [18, 18], html: glyph })
   for (const item of items) {
     L.marker([item.lat, item.lng], { icon, zIndexOffset: -1000, title: label(item) })
-      .bindPopup(placePopup(label(item), item))
+      .bindPopup(placePopup(label(item), item, kind))
       .addTo(layer)
   }
   return layer
@@ -433,8 +436,8 @@ function glyphLayer<T extends { lat: number, lng: number }>(items: T[], classNam
 function updateFacilityLayers() {
   if (!map) return
   if (!toiletLayer && props.facilities) {
-    toiletLayer = glyphLayer(props.facilities.toilets, 'facility-icon facility-icon--toilet', '廁', toiletLabel)
-    showerLayer = glyphLayer(props.facilities.showers, 'facility-icon facility-icon--shower', '浴', showerLabel)
+    toiletLayer = glyphLayer(props.facilities.toilets, 'toilet', '廁', toiletLabel)
+    showerLayer = glyphLayer(props.facilities.showers, 'shower', '浴', showerLabel)
   }
   for (const [layer, show] of [[toiletLayer, props.showToilets], [showerLayer, props.showShowers]] as const) {
     if (!layer) continue

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Category } from '~/utils/geo'
 import { CATEGORIES, CATEGORY_COLORS, CATEGORY_LABELS, RADIUS_OPTIONS } from '~/utils/categories'
+import { track } from '~/utils/analytics'
 
 const radius = defineModel<number>('radius', { required: true })
 const categories = defineModel<Set<Category>>('categories', { required: true })
@@ -21,7 +22,14 @@ function toggle(category: Category) {
   categories.value = next
 }
 
+// Tracked from the switch itself, so a switch the page turns back off after a
+// failed load sends no event.
+function trackLayer(layer: string, e: Event) {
+  track('toggle_layer', { layer, enabled: (e.target as HTMLInputElement).checked })
+}
+
 function toggleLoop(name: string, on: boolean) {
+  track('toggle_loop', { loop_name: name, enabled: on })
   const next = new Set(shownLoops.value)
   if (on) next.add(name)
   else next.delete(name)
@@ -31,40 +39,40 @@ function toggleLoop(name: string, on: boolean) {
 
 <template>
   <label class="switch">
-    <input v-model="showRiverside" type="checkbox" role="switch">
+    <input v-model="showRiverside" type="checkbox" role="switch" @change="trackLayer('riverside_stations', $event)">
     <span class="switch__track" aria-hidden="true" />
     <span>河濱站點</span>
   </label>
 
   <label class="switch">
-    <input v-model="showUrban" type="checkbox" role="switch">
+    <input v-model="showUrban" type="checkbox" role="switch" @change="trackLayer('urban_stations', $event)">
     <span class="switch__track" aria-hidden="true" />
     <span>市區站點</span>
   </label>
 
   <label class="switch">
-    <input v-model="showCycling" type="checkbox" role="switch">
+    <input v-model="showCycling" type="checkbox" role="switch" @change="trackLayer('urban_cycling', $event)">
     <span class="switch__track" aria-hidden="true" />
     <span>都市自行車道</span>
   </label>
   <p v-if="cyclingFailed" class="switch__error" role="alert">自行車道資料載入失敗</p>
 
   <label class="switch">
-    <input v-model="showShelters" type="checkbox" role="switch">
+    <input v-model="showShelters" type="checkbox" role="switch" @change="trackLayer('shelters', $event)">
     <span class="switch__track" aria-hidden="true" />
     <span>躲雨點</span>
   </label>
   <p v-if="shelterFailed" class="switch__error" role="alert">躲雨點資料載入失敗</p>
 
   <label class="switch">
-    <input v-model="showToilets" type="checkbox" role="switch">
+    <input v-model="showToilets" type="checkbox" role="switch" @change="trackLayer('toilets', $event)">
     <span class="switch__track" aria-hidden="true" />
     <span>廁所</span>
   </label>
   <p v-if="toiletFailed" class="switch__error" role="alert">廁所資料載入失敗</p>
 
   <label class="switch">
-    <input v-model="showShowers" type="checkbox" role="switch">
+    <input v-model="showShowers" type="checkbox" role="switch" @change="trackLayer('showers', $event)">
     <span class="switch__track" aria-hidden="true" />
     <span>淋浴</span>
   </label>

@@ -28,6 +28,9 @@ defineProps<{
           :href="directionsUrl(origin, shop)"
           target="_blank"
           rel="noopener"
+          data-ga-from="list"
+          :data-ga-category="shop.category"
+          :data-ga-distance-m="Math.round(distance)"
           :aria-label="`以 Google 地圖步行導航到 ${shop.name ?? CATEGORY_LABELS[shop.category]}`"
         >步行導航</a>
       </li>

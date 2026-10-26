@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { mount } from '@vue/test-utils'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import MapControls from './MapControls.vue'
 import { CATEGORIES } from '~/utils/categories'
 
@@ -124,5 +124,38 @@ describe('MapControls loop switches', () => {
     const emitted = wrapper.emitted('update:shownLoops')!.map(([s]) => [...(s as Set<string>)])
     expect(emitted).toEqual([[LOOPS[1], LOOPS[0]], []])
     expect([...shown]).toEqual([LOOPS[1]])
+  })
+})
+
+describe('MapControls analytics events', () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it('sends toggle_layer with the layer and its new state for each layer switch', async () => {
+    const gtag = vi.fn()
+    vi.stubGlobal('gtag', gtag)
+    const wrapper = mountControls(false)
+    const cases = [
+      ['河濱站點', 'riverside_stations', false],
+      ['市區站點', 'urban_stations', true],
+      ['都市自行車道', 'urban_cycling', true],
+      ['躲雨點', 'shelters', true],
+      ['廁所', 'toilets', true],
+      ['淋浴', 'showers', true],
+    ] as const
+    for (const [label, , enabled] of cases) await switchLabelled(wrapper, label).find('input').setValue(enabled)
+    expect(gtag.mock.calls).toEqual(cases.map(([, layer, enabled]) => ['event', 'toggle_layer', { layer, enabled }]))
+  })
+
+  it('sends toggle_loop with the loop name and its new state', async () => {
+    const gtag = vi.fn()
+    vi.stubGlobal('gtag', gtag)
+    const wrapper = mountControls(false, { loops: ['淡水河金色水岸'] })
+    const input = wrapper.findAll('.switch').find((s) => s.text() === '淡水河金色水岸')!.find('input')
+    await input.setValue(true)
+    await input.setValue(false)
+    expect(gtag.mock.calls).toEqual([
+      ['event', 'toggle_loop', { loop_name: '淡水河金色水岸', enabled: true }],
+      ['event', 'toggle_loop', { loop_name: '淡水河金色水岸', enabled: false }],
+    ])
   })
 })

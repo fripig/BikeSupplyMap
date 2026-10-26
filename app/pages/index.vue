@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { track, trackMapsLinks } from '~/utils/analytics'
 import { isMapPoint, nearbyShops, type Category, type MapPoint, type Shop, type Station } from '~/utils/geo'
 import { CATEGORIES, DEFAULT_RADIUS } from '~/utils/categories'
 import { formatDataDate, formatDistance } from '~/utils/format'
@@ -65,6 +66,18 @@ const pointStation = computed(() =>
 const nearby = computed(() =>
   selected.value ? nearbyShops(selected.value, shops.value, radius.value, enabledCategories.value) : [],
 )
+
+// Selections from the map, a picked point's 選這個站, or a route stop's.
+function select(pick: Station | MapPoint, via: 'marker' | 'map' | 'route_stop' | 'map_point') {
+  selected.value = pick
+  if (isMapPoint(pick)) track('pick_map_point', { has_station: nearestStation(pick, stations.value) !== null })
+  else track('select_station', { station_name: pick.name, station_kind: pick.riverside ? 'riverside' : 'urban', via })
+}
+
+// Follows of every Google Maps link on the page, popups included.
+let stopTrackingLinks: (() => void) | undefined
+onMounted(() => { stopTrackingLinks = trackMapsLinks(document) })
+onBeforeUnmount(() => stopTrackingLinks?.())
 
 onMounted(async () => {
   // Bike routes and the urban layer load alongside stations; a failure shows a
@@ -133,11 +146,11 @@ watch(selected, async () => {
             <h2 ref="stationHeading" class="station-name">{{ selected.name }}</h2>
             <p class="station-meta">{{ selected.city }}{{ selected.district }} · 附近 {{ nearby.length }} 家</p>
           </template>
-          <a class="station-link map-link" :href="mapsPlaceUrl(selected)" target="_blank" rel="noopener">在 Google 地圖開啟</a>
+          <a class="station-link map-link" :href="mapsPlaceUrl(selected)" target="_blank" rel="noopener" :data-ga-place="isMapPoint(selected) ? 'map_point' : 'station'">在 Google 地圖開啟</a>
           <p v-if="isMapPoint(selected)" class="point-station">
             <template v-if="pointStation">
               最近的 YouBike：{{ pointStation.station.name }}（{{ formatDistance(pointStation.meters) }}）
-              <button type="button" class="point-station-select" @click="selected = pointStation.station">選這個站</button>
+              <button type="button" class="point-station-select" @click="select(pointStation.station, 'map_point')">選這個站</button>
             </template>
             <template v-else>2 km 內沒有 YouBike 站</template>
           </p>
@@ -178,7 +191,7 @@ watch(selected, async () => {
           :facilities="facilities"
           :show-vending="enabledCategories.has('vending')"
           :shown-loops="shownLoops"
-          @select="selected = $event"
+          @select="select"
         />
       </ClientOnly>
     </section>
