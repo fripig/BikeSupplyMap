@@ -7,13 +7,13 @@ const station = { id: 's1', name: '金華國中', city: '臺北市', district: '
 
 describe('ShopList', () => {
   it('shows the empty-range message when no shop is within the radius', () => {
-    const wrapper = mount(ShopList, { props: { station, items: [] } })
+    const wrapper = mount(ShopList, { props: { origin: station, items: [] } })
     expect(wrapper.text()).toContain('這個範圍內沒有店家，試試擴大範圍')
     expect(wrapper.findAll('li')).toHaveLength(0)
   })
 
   it('asks for a category instead of a wider range when every category is off', () => {
-    const wrapper = mount(ShopList, { props: { station, items: [], noCategorySelected: true } })
+    const wrapper = mount(ShopList, { props: { origin: station, items: [], noCategorySelected: true } })
     expect(wrapper.text()).toContain('請至少選擇一種店家類型')
     expect(wrapper.text()).not.toContain('試試擴大範圍')
   })
@@ -21,7 +21,7 @@ describe('ShopList', () => {
   it('lists shops with category, straight-line distance and a walking directions link', () => {
     const wrapper = mount(ShopList, {
       props: {
-        station,
+        origin: station,
         items: [
           { shop: { id: 'n1', name: '全聯福利中心', category: 'supermarket', lat: 25.0271, lng: 121.5442 }, distance: 124 },
           { shop: { id: 'n2', name: null, category: 'grocery', lat: 25.028, lng: 121.545 }, distance: 296 },
@@ -43,7 +43,7 @@ describe('ShopList', () => {
 
   it('lists an unnamed vending machine like a shop', () => {
     const wrapper = mount(ShopList, {
-      props: { station, items: [{ shop: { id: 'n3', name: null, category: 'vending', lat: 25.027, lng: 121.5436 }, distance: 120 }] },
+      props: { origin: station, items: [{ shop: { id: 'n3', name: null, category: 'vending', lat: 25.027, lng: 121.5436 }, distance: 120 }] },
     })
     const item = wrapper.find('li')
     expect(item.find('.shop__name').text()).toBe('自動販賣機')

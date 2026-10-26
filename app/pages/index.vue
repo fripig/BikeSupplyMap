@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { nearbyShops, type Category, type Shop, type Station } from '~/utils/geo'
+import { isMapPoint, nearbyShops, type Category, type MapPoint, type Shop, type Station } from '~/utils/geo'
 import { CATEGORIES, DEFAULT_RADIUS } from '~/utils/categories'
-import { formatDataDate } from '~/utils/format'
+import { formatDataDate, formatDistance } from '~/utils/format'
 import { mapsPlaceUrl } from '~/utils/links'
+import { nearestStation } from '~/utils/route-stops'
 import { useCyclingToggle, useLazyToggle, useRouteData } from '~/utils/cycling'
 import { createCyclingLoader, createJsonLoader, loadJson, loadRoutes, loadSupplyData, type FacilityData, type ShelterData } from '~/utils/load-data'
 
@@ -13,7 +14,8 @@ const shops = shallowRef<Shop[]>([])
 const status = ref<'loading' | 'ready' | 'error'>('loading')
 const dataDate = ref<string | null>(null)
 
-const selected = shallowRef<Station | null>(null)
+// A station, or a point picked by clicking a blank part of the map.
+const selected = shallowRef<Station | MapPoint | null>(null)
 const radius = ref(DEFAULT_RADIUS)
 const enabledCategories = ref(new Set<Category>(CATEGORIES))
 const showRiverside = ref(true)
@@ -56,6 +58,10 @@ const facilities = computed(() => toiletData.value ?? showerData.value)
 const toiletLoadFailed = computed(() => toiletFailed.value && !facilities.value)
 const showerLoadFailed = computed(() => showerFailed.value && !facilities.value)
 
+// A picked point lists the nearest station (riverside or urban) within 2 km.
+const pointStation = computed(() =>
+  selected.value && isMapPoint(selected.value) ? nearestStation(selected.value, stations.value) : null,
+)
 const nearby = computed(() =>
   selected.value ? nearbyShops(selected.value, shops.value, radius.value, enabledCategories.value) : [],
 )
@@ -119,12 +125,25 @@ watch(selected, async () => {
 
       <div class="panel__body">
         <template v-if="selected">
-          <h2 ref="stationHeading" class="station-name">{{ selected.name }}</h2>
-          <p class="station-meta">{{ selected.city }}{{ selected.district }} · 附近 {{ nearby.length }} 家</p>
+          <template v-if="isMapPoint(selected)">
+            <h2 ref="stationHeading" class="station-name">地圖上選的地點</h2>
+            <p class="station-meta">附近 {{ nearby.length }} 家</p>
+          </template>
+          <template v-else>
+            <h2 ref="stationHeading" class="station-name">{{ selected.name }}</h2>
+            <p class="station-meta">{{ selected.city }}{{ selected.district }} · 附近 {{ nearby.length }} 家</p>
+          </template>
           <a class="station-link map-link" :href="mapsPlaceUrl(selected)" target="_blank" rel="noopener">在 Google 地圖開啟</a>
-          <ShopList :station="selected" :items="nearby" :no-category-selected="enabledCategories.size === 0" />
+          <p v-if="isMapPoint(selected)" class="point-station">
+            <template v-if="pointStation">
+              最近的 YouBike：{{ pointStation.station.name }}（{{ formatDistance(pointStation.meters) }}）
+              <button type="button" class="point-station-select" @click="selected = pointStation.station">選這個站</button>
+            </template>
+            <template v-else>2 km 內沒有 YouBike 站</template>
+          </p>
+          <ShopList :origin="selected" :items="nearby" :no-category-selected="enabledCategories.size === 0" />
         </template>
-        <p v-else-if="status === 'ready'" class="hint">地圖預設只顯示河濱自行車道旁的 YouBike 站點，點站點查看附近可以補給的店家。要找市區站點，打開「市區站點」。</p>
+        <p v-else-if="status === 'ready'" class="hint">地圖預設只顯示河濱自行車道旁的 YouBike 站點，點站點或地圖上任一處，查看附近可以補給的店家。要找市區站點，打開「市區站點」。</p>
       </div>
 
       <footer class="credits">
@@ -248,6 +267,16 @@ body {
 
 .hint {
   margin-top: 1rem;
+}
+
+.point-station {
+  margin: 0 0 0.5rem;
+  font-size: 0.85rem;
+}
+
+.point-station-select {
+  margin-left: 4px;
+  font: inherit;
 }
 
 .map-pane {

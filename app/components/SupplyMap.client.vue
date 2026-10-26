@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Circle, Control, LayerGroup, Map as LeafletMap, Marker, MarkerCluster, MarkerClusterGroup } from 'leaflet'
-import { splitStations, type NearbyShop, type Station } from '~/utils/geo'
+import { isMapPoint, splitStations, type MapPoint, type NearbyShop, type Station } from '~/utils/geo'
 import { cyclingDashArray, cyclingVisibility, legendEntries, shelterLabel, showerLabel, toiletLabel, vendingLabel } from '~/utils/cycling'
 import type { BikeRoute, CyclingData, FacilityData, RouteData, RouteVending, ShelterData } from '~/utils/load-data'
 import { CATEGORY_COLORS, CATEGORY_LABELS } from '~/utils/categories'
@@ -10,7 +10,7 @@ import { nearestStation, stopMarkers } from '~/utils/route-stops'
 
 const props = defineProps<{
   stations: Station[]
-  selected: Station | null
+  selected: Station | MapPoint | null
   nearby: NearbyShop[]
   radius: number
   showRiverside: boolean
@@ -28,7 +28,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  select: [station: Station]
+  select: [pick: Station | MapPoint]
 }>()
 
 const container = ref<HTMLElement>()
@@ -136,6 +136,7 @@ onMounted(async () => {
   if (props.showRiverside) map.addLayer(riversideLayer)
   shopLayer = L.layerGroup().addTo(map)
   map.on('zoomend', updateCyclingLayer)
+  pickPointsOnBlankClicks(map)
 
   drawSelection()
   drawRoutes()
@@ -146,6 +147,41 @@ onMounted(async () => {
 
 onBeforeUnmount(() => map?.remove())
 
+// A click on a blank part of the map picks that point. Markers never pass
+// clicks to the map; interactive vector layers set bubblingMouseEvents: false and
+// the legend stops propagation, so only blank spots and non-interactive lines
+// get here. Leaflet drops clicks that end a drag. A click that closes an open
+// popup only closes it: this preclick listener runs before the popup's own.
+// The pick waits PICK_DELAY_MS so a double-click (zoom in) cancels it: the two
+// clicks before the dblclick event never pick.
+const PICK_DELAY_MS = 250
+function pickPointsOnBlankClicks(m: LeafletMap) {
+  let popupOpen = false
+  let closedPopup = false
+  let pending: ReturnType<typeof setTimeout> | undefined
+  const cancel = () => {
+    clearTimeout(pending)
+    pending = undefined
+  }
+  m.on('popupopen', () => { popupOpen = true })
+  m.on('popupclose', () => { popupOpen = false })
+  m.on('preclick', () => { closedPopup = popupOpen })
+  m.on('dblclick', cancel)
+  m.on('click', (e) => {
+    cancel()
+    if (closedPopup) {
+      closedPopup = false
+      return
+    }
+    const round5 = (n: number) => Math.round(n * 1e5) / 1e5
+    const pick: MapPoint = { kind: 'point', lat: round5(e.latlng.lat), lng: round5(e.latlng.lng) }
+    pending = setTimeout(() => {
+      pending = undefined
+      emit('select', pick)
+    }, PICK_DELAY_MS)
+  })
+}
+
 function drawSelection() {
   if (!map || !shopLayer) return
   shopLayer.clearLayers()
@@ -153,20 +189,25 @@ function drawSelection() {
   radiusCircle?.remove()
   const station = props.selected
   if (!station) return
+  const point = isMapPoint(station)
 
   radiusCircle = L.circle([station.lat, station.lng], {
     radius: props.radius, color: '#e67700', weight: 1, fillOpacity: 0.06, interactive: false,
   }).addTo(map)
   selectedMarker = L.marker([station.lat, station.lng], {
-    icon: L.divIcon({ className: 'station-icon station-icon--selected', iconSize: [26, 26], html: BIKE_SVG }),
-    title: station.name,
+    icon: point
+      ? L.divIcon({ className: 'map-point-icon', iconSize: [18, 18] })
+      : L.divIcon({ className: 'station-icon station-icon--selected', iconSize: [26, 26], html: BIKE_SVG }),
+    title: point ? '地圖上選的地點' : station.name,
     zIndexOffset: 1000,
+    // A picked point lets clicks through, so clicking it picks again.
+    interactive: !point,
   }).addTo(map)
 
   for (const { shop, distance } of props.nearby) {
     const label = shop.name ?? CATEGORY_LABELS[shop.category]
     L.circleMarker([shop.lat, shop.lng], {
-      radius: 7, color: '#fff', weight: 2, fillColor: CATEGORY_COLORS[shop.category], fillOpacity: 1,
+      radius: 7, color: '#fff', weight: 2, fillColor: CATEGORY_COLORS[shop.category], fillOpacity: 1, bubblingMouseEvents: false,
     })
       .bindPopup(
         `<strong>${escapeHtml(label)}</strong><br>${CATEGORY_LABELS[shop.category]} · 直線距離 ${formatDistance(distance)}`
@@ -192,7 +233,9 @@ function addRouteLines(route: BikeRoute, layer: LayerGroup) {
   const color = route.optional ? LOOP_COLOR : route.kind === 'bridge' ? BRIDGE_COLOR : route.kind === 'link' ? LINK_COLOR : RIVERSIDE_COLOR
   for (const line of route.lines) {
     if (route.optional) L.polyline(line, { renderer: renderer(), interactive: false, weight: 10, opacity: 1, color: '#fff' }).addTo(layer)
-    const polyline = L.polyline(line, { renderer: renderer(), interactive: named, weight: 6, opacity: route.optional ? 1 : 0.9, color })
+    const polyline = L.polyline(line, {
+      renderer: renderer(), interactive: named, bubblingMouseEvents: false, weight: 6, opacity: route.optional ? 1 : 0.9, color,
+    })
     if (named) polyline.bindPopup(escapeHtml(route.name))
     polyline.addTo(layer)
   }
@@ -203,7 +246,7 @@ function vendingMarkers(items: RouteVending[]) {
   const layer = L.layerGroup()
   for (const v of items) {
     L.circleMarker([v.lat, v.lng], {
-      renderer: renderer(), radius: 5, weight: 2, color: '#fff', fillColor: CATEGORY_COLORS.vending, fillOpacity: 1,
+      renderer: renderer(), radius: 5, weight: 2, color: '#fff', fillColor: CATEGORY_COLORS.vending, fillOpacity: 1, bubblingMouseEvents: false,
     })
       .bindPopup(placePopup(vendingLabel(v.name, v.vending), v))
       .addTo(layer)
@@ -418,7 +461,12 @@ function updateLegend() {
     .map(({ label, icon }) => `<span><i class="cycling-legend__${icon}"></i>${label}</span>`)
   if (!legend) {
     legend = new L.Control({ position: 'bottomleft' })
-    legend.onAdd = () => (legendEl = L.DomUtil.create('div', 'cycling-legend'))
+    legend.onAdd = () => {
+      legendEl = L.DomUtil.create('div', 'cycling-legend')
+      // Clicks on the legend are not blank-map clicks.
+      L.DomEvent.disableClickPropagation(legendEl)
+      return legendEl
+    }
   }
   if (!entries.length) {
     legend.remove()
@@ -665,6 +713,14 @@ watch(() => [props.selected, props.radius] as const, () => {
   background: #0c8599;
   border: 2px solid #fff;
   box-shadow: 0 0 0 1px #0c8599;
+}
+
+.map-point-icon {
+  background: #e67700;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px #0006;
+  box-sizing: border-box;
 }
 
 .station-icon--selected {

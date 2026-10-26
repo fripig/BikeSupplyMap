@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { haversineMeters, nearbyShops, splitStations, type Category, type Shop, type Station } from './geo'
+import { haversineMeters, isMapPoint, nearbyShops, splitStations, type Category, type Shop, type Station } from './geo'
 
 const station = { lat: 25.0330, lng: 121.5654 }
 const METERS_PER_DEGREE_LAT = 111194.93
@@ -53,5 +53,14 @@ describe('splitStations', () => {
   it('keeps every station visible when the data has no riverside flag at all', () => {
     const stale = [at('A'), at('B')]
     expect(splitStations(stale)).toEqual({ riverside: stale, urban: [] })
+  })
+})
+
+describe('isMapPoint', () => {
+  it('tells a picked map point from a station', () => {
+    const picked = { kind: 'point' as const, lat: 25, lng: 121.5 }
+    const s: Station = { id: 's1', name: '金華國中', city: '臺北市', district: '大安區', lat: 25.02605, lng: 121.5436, riverside: false }
+    expect(isMapPoint(picked)).toBe(true)
+    expect(isMapPoint(s)).toBe(false)
   })
 })

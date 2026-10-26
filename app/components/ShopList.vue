@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import type { NearbyShop, Station } from '~/utils/geo'
+import type { LatLng, NearbyShop } from '~/utils/geo'
 import { CATEGORY_COLORS, CATEGORY_LABELS } from '~/utils/categories'
 import { formatDistance } from '~/utils/format'
 import { directionsUrl } from '~/utils/links'
 
 defineProps<{
-  station: Station
+  // Where the walking directions start: the selected station or map point.
+  origin: LatLng
   items: NearbyShop[]
   noCategorySelected?: boolean
 }>()
@@ -24,7 +25,7 @@ defineProps<{
         </div>
         <a
           class="shop__link map-link"
-          :href="directionsUrl(station, shop)"
+          :href="directionsUrl(origin, shop)"
           target="_blank"
           rel="noopener"
           :aria-label="`以 Google 地圖步行導航到 ${shop.name ?? CATEGORY_LABELS[shop.category]}`"

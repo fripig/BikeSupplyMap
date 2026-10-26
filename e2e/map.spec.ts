@@ -569,3 +569,131 @@ test('station markers and clusters of both kinds share one style', async ({ page
   expect(riverside.background).toBe('rgb(245, 166, 35)')
 })
 
+// A blank spot near `near` at `zoom`: the first of a few pixel offsets where
+// nothing but the map is under the pointer and the bike canvas draws nothing.
+// Returns its page point and its position rounded to 5 decimals as the site does.
+async function findBlankSpot(page: Page, near: LatLng, zoom = 17) {
+  await setView(page, near, zoom)
+  const center = await toPagePoint(page, near)
+  for (const [dx, dy] of [[-90, -70], [90, -70], [-90, 70], [90, 70], [0, -110], [0, 110]]) {
+    // Whole pixels, so the point worked out here is the one the click reports.
+    const at = { x: Math.round(center.x + dx!), y: Math.round(center.y + dy!) }
+    const blank = await page.evaluate(({ x, y }) => {
+      const top = document.elementFromPoint(x, y)
+      if (!(top instanceof HTMLCanvasElement) && !top?.classList.contains('leaflet-container')) return false
+      for (const canvas of document.querySelectorAll<HTMLCanvasElement>('.leaflet-pane canvas')) {
+        const box = canvas.getBoundingClientRect()
+        const px = Math.round((x - box.left) * (canvas.width / box.width))
+        const py = Math.round((y - box.top) * (canvas.height / box.height))
+        if (canvas.getContext('2d')!.getImageData(px, py, 1, 1).data[3] !== 0) return false
+      }
+      return true
+    }, at)
+    if (!blank) continue
+    const point = await page.evaluate(({ x, y }) => {
+      const map = window.__supplyMap!
+      const box = map.getContainer().getBoundingClientRect()
+      const { lat, lng } = map.containerPointToLatLng([x - box.left, y - box.top])
+      return { lat: Math.round(lat * 1e5) / 1e5, lng: Math.round(lng * 1e5) / 1e5 }
+    }, at)
+    return { at, point }
+  }
+  throw new Error(`no blank spot near ${near}`)
+}
+
+// Clicks a blank spot near `near` at zoom 17 and returns the picked point.
+async function clickBlankSpot(page: Page, near: LatLng) {
+  const { at, point } = await findBlankSpot(page, near)
+  await page.mouse.click(at.x, at.y)
+  return point
+}
+
+// Longer than the site's 250 ms pick delay, for checks that nothing was picked.
+const PICK_WAIT_MS = 400
+
+// Taipei Main Station's surroundings: dense with shops, and urban stations are
+// hidden by default, so blank spots are easy to find.
+const TAIPEI_MAIN: LatLng = [25.0478, 121.517]
+
+test('clicking a blank spot lists shops near it and its nearest station', async ({ page }) => {
+  const stations = await loadStations(page)
+  const point = await clickBlankSpot(page, TAIPEI_MAIN)
+  const nearest = stations.reduce((a, b) => (haversineMeters(point, b) < haversineMeters(point, a) ? b : a))
+  await expect(page.locator('.station-name')).toHaveText('地圖上選的地點')
+  await expect(page.locator('.station-meta')).toHaveText(/^附近 \d+ 家$/)
+  await expect(page.locator('.point-station')).toContainText(`最近的 YouBike：${nearest.name}（${formatDistance(haversineMeters(point, nearest))}）`)
+  await expect(page.locator('.station-link')).toHaveAttribute('href', mapsPlaceUrl(point))
+  const links = page.locator('.shop__link')
+  const count = Number((await page.locator('.station-meta').textContent())!.match(/\d+/)![0])
+  expect(count).toBeGreaterThan(0)
+  await expect(links).toHaveCount(count)
+  for (const href of await links.evaluateAll((as) => as.map((a) => (a as HTMLAnchorElement).href))) {
+    expect(new URL(href).searchParams.get('origin')).toBe(`${point.lat},${point.lng}`)
+  }
+  const meters = (await page.locator('.shop__meta').allTextContents()).map((t) => Number(t.match(/(\d+) m$/)![1]))
+  expect(meters).toEqual([...meters].sort((a, b) => a - b))
+  await expect(page.locator('.map-point-icon')).toHaveCount(1)
+})
+
+test('選這個站 on a picked point selects the nearest station', async ({ page }) => {
+  const stations = await loadStations(page)
+  const point = await clickBlankSpot(page, TAIPEI_MAIN)
+  const nearest = stations.reduce((a, b) => (haversineMeters(point, b) < haversineMeters(point, a) ? b : a))
+  await page.getByRole('button', { name: '選這個站' }).click()
+  await expect(page.locator('.station-name')).toHaveText(nearest.name)
+  await expect(page.locator('.map-point-icon')).toHaveCount(0)
+})
+
+test('clicking the legend does not pick a point', async ({ page }) => {
+  await clickBlankSpot(page, TAIPEI_MAIN)
+  await page.getByRole('button', { name: '選這個站' }).click()
+  const name = await page.locator('.station-name').textContent()
+  await settleMap(page)
+  await legend(page).click()
+  await page.waitForTimeout(PICK_WAIT_MS)
+  await expect(page.locator('.station-name')).toHaveText(name!)
+})
+
+test('clicking a vending dot, then a blank spot to close its popup, keeps the selected station', async ({ page }) => {
+  await clickBlankSpot(page, TAIPEI_MAIN)
+  await page.getByRole('button', { name: '選這個站' }).click()
+  const name = await page.locator('.station-name').textContent()
+  await settleMap(page)
+  const v = await findVisibleVending(page)
+  const at = await toPagePoint(page, [v.lat, v.lng])
+  await page.mouse.click(at.x, at.y)
+  await expect(popup(page)).toContainText(vendingLabel(v.name, v.vending))
+  await page.waitForTimeout(PICK_WAIT_MS)
+  await expect(page.locator('.station-name')).toHaveText(name!)
+  await clickBlankSpot(page, [v.lat, v.lng])
+  await expect(popup(page)).toHaveCount(0)
+  await page.waitForTimeout(PICK_WAIT_MS)
+  await expect(page.locator('.station-name')).toHaveText(name!)
+})
+
+test('double-clicking a blank spot zooms in without picking it', async ({ page }) => {
+  await clickBlankSpot(page, TAIPEI_MAIN)
+  await page.getByRole('button', { name: '選這個站' }).click()
+  const name = await page.locator('.station-name').textContent()
+  await settleMap(page)
+  const { at } = await findBlankSpot(page, TAIPEI_MAIN, 15)
+  await page.mouse.dblclick(at.x, at.y)
+  await settleMap(page)
+  await page.waitForTimeout(PICK_WAIT_MS)
+  expect(await page.evaluate(() => window.__supplyMap!.getZoom())).toBe(16)
+  await expect(page.locator('.station-name')).toHaveText(name!)
+  await expect(page.locator('.map-point-icon')).toHaveCount(0)
+})
+
+test('a picked point with no station within 2 km says so', async ({ page }) => {
+  const stations = await loadStations(page)
+  // Hills and coast in 新北; the test takes the first more than 2.5 km from
+  // every station, leaving room for the blank-spot offset.
+  const candidates: LatLng[] = [[25.17, 121.56], [24.85, 121.55], [25.0, 121.8], [25.25, 121.62]]
+  const far = candidates.find(([lat, lng]) => stations.every((s) => haversineMeters({ lat, lng }, s) > 2500))!
+  expect(far).toBeTruthy()
+  await clickBlankSpot(page, far)
+  await expect(page.locator('.station-name')).toHaveText('地圖上選的地點')
+  await expect(page.locator('.point-station')).toHaveText('2 km 內沒有 YouBike 站')
+  await expect(page.getByRole('button', { name: '選這個站' })).toHaveCount(0)
+})

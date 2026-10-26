@@ -14,6 +14,15 @@ export interface Station extends LatLng {
   riverside: boolean
 }
 
+// A spot picked by clicking a blank part of the map; stations have no `kind`.
+export interface MapPoint extends LatLng {
+  kind: 'point'
+}
+
+export function isMapPoint(p: Station | MapPoint): p is MapPoint {
+  return 'kind' in p && p.kind === 'point'
+}
+
 export interface Shop extends LatLng {
   id: string
   name: string | null
